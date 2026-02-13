@@ -1,0 +1,19 @@
+[workspace]
+authors = ["Ali Tafakkor <alitafakkor@gmail.com>"]
+channels = ["conda-forge"]
+name = "triton"
+platforms = ["osx-arm64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]
+librosa = ">=0.11.0,<0.12"
+numpy = ">=2.3.5,<3"
+typer = ">=0.23.1,<0.24"
+streamlit = ">=1.54.0,<2"
+pydantic = ">=2.12.5,<3"
+ffmpeg = ">=8.0.1,<9"
+
+[pypi-dependencies]
+soundfile = "*"
