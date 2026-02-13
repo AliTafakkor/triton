@@ -8,14 +8,7 @@ from __future__ import annotations
 import librosa
 import numpy as np
 
-
-def _rms(signal: np.ndarray, axis: int = -1) -> np.ndarray:
-	"""Compute root mean square along an axis."""
-	signal = np.asarray(signal, dtype=np.float32)
-	return np.sqrt(np.mean(np.square(signal), axis=axis))
-
-
-def _match_length(noise: np.ndarray, target_length: int) -> np.ndarray:
+from triton.core.io import rms, normalize_peak
 	"""Tile or crop noise to match target length along the last axis."""
 	noise = np.asarray(noise, dtype=np.float32)
 	if noise.shape[-1] == 0:
@@ -49,10 +42,8 @@ def mix_at_snr(speech: np.ndarray, noise: np.ndarray, snr_db: float) -> np.ndarr
 
 	noise = _match_length(noise, speech.shape[-1])
 
-	speech_rms = _rms(speech)
-	noise_rms = _rms(noise)
-
-	if np.any(noise_rms == 0):
+    speech_rms = rms(speech)
+    noise_rms = rms(noise)
 		raise ValueError("Noise RMS is zero; cannot scale to target SNR.")
 
 	target_noise_rms = speech_rms / (10 ** (snr_db / 20.0))
@@ -61,8 +52,4 @@ def mix_at_snr(speech: np.ndarray, noise: np.ndarray, snr_db: float) -> np.ndarr
 	scaled_noise = noise * scale
 	mixed = speech + scaled_noise
 
-	peak = np.max(np.abs(mixed))
-	if peak > 0:
-		return librosa.util.normalize(mixed, norm=np.inf)
-
-	return mixed
+    return normalize_peak(mixed)

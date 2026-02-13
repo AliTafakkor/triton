@@ -4,31 +4,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Iterable
 
 import typer
 
 from triton.transcribe.whisper import transcribe_file
+from triton.core.io import iter_audio_files
 
 
 transcribe_app = typer.Typer(add_completion=False, help="Transcribe audio locally")
-
-
-SUPPORTED_EXTS = {".wav", ".flac", ".ogg", ".mp3", ".m4a"}
-
-
-def _is_audio_file(path: Path) -> bool:
-	return path.is_file() and path.suffix.lower() in SUPPORTED_EXTS
-
-
-def _iter_audio_files(path: Path) -> Iterable[Path]:
-	if path.is_file():
-		if _is_audio_file(path):
-			yield path
-		return
-
-	for ext in SUPPORTED_EXTS:
-		yield from path.rglob(f"*{ext}")
 
 
 @transcribe_app.command("local")
@@ -51,7 +34,7 @@ def transcribe_local(
 	if not input_path.exists():
 		raise typer.BadParameter("Input path does not exist.")
 
-	files = list(_iter_audio_files(input_path))
+	files = list(iter_audio_files(input_path))
 	if not files:
 		raise typer.BadParameter("No audio files found.")
 

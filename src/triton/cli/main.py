@@ -3,43 +3,22 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable, Tuple
+from typing import Tuple
 
-import librosa
 import numpy as np
-import soundfile as sf
 import typer
 
 from triton.core.mixer import mix_at_snr
+from triton.core.io import is_audio_file, iter_audio_files, load_audio, save_audio
 from triton.cli.ingest import ingest_app
 from triton.cli.transcribe import transcribe_app
+from triton.cli.degrade import degrade_app
 
 
 app = typer.Typer(add_completion=False, help="Triton audio processing CLI")
 app.add_typer(ingest_app, name="ingest")
 app.add_typer(transcribe_app, name="transcribe")
-
-
-SUPPORTED_EXTS = {".wav", ".flac", ".ogg", ".mp3", ".m4a"}
-
-
-def _is_audio_file(path: Path) -> bool:
-	return path.is_file() and path.suffix.lower() in SUPPORTED_EXTS
-
-
-def _iter_audio_files(path: Path) -> Iterable[Path]:
-	if path.is_file():
-		if _is_audio_file(path):
-			yield path
-		return
-
-	for ext in SUPPORTED_EXTS:
-		yield from path.rglob(f"*{ext}")
-
-
-def _load_audio(path: Path, target_sr: int | None) -> Tuple[np.ndarray, int]:
-	audio, sr = librosa.load(path, sr=target_sr, mono=True)
-	return audio, sr
+app.add_typer(degrade_app, name="degrade")
 
 
 @app.command()
@@ -60,22 +39,22 @@ def mix(
 	output_dir = output_dir.expanduser().resolve()
 	output_dir.mkdir(parents=True, exist_ok=True)
 
-	if not noise_path.exists() or not _is_audio_file(noise_path):
+	if not noise_path.exists() or not is_audio_file(noise_path):
 		raise typer.BadParameter("Noise path must be an audio file.")
 
 	if not speech_path.exists():
 		raise typer.BadParameter("Speech path does not exist.")
 
-	speech_files = list(_iter_audio_files(speech_path))
+	speech_files = list(iter_audio_files(speech_path))
 	if not speech_files:
 		raise typer.BadParameter("No audio files found in speech path.")
 
-	noise_audio, noise_sr = _load_audio(noise_path, sample_rate)
+	noise_audio, noise_sr = load_audio(noise_path, sr=sample_rate)
 
 	for speech_file in speech_files:
-		speech_audio, speech_sr = _load_audio(speech_file, sample_rate)
+		speech_audio, speech_sr = load_audio(speech_file, sr=sample_rate)
 		if sample_rate is None and noise_sr != speech_sr:
-			noise_audio, _ = _load_audio(noise_path, speech_sr)
+			noise_audio, _ = load_audio(noise_path, sr=speech_sr)
 
 		mixed = mix_at_snr(speech_audio, noise_audio, snr_db)
 
@@ -83,9 +62,7 @@ def mix(
 			speech_file.name if speech_path.is_file() else speech_file.relative_to(speech_path)
 		)
 		out_path = output_dir / rel_name
-		out_path.parent.mkdir(parents=True, exist_ok=True)
-
-		sf.write(out_path, mixed, speech_sr)
+		save_audio(out_path, mixed, speech_sr)
 		typer.echo(f"Wrote {out_path}")
 
 
