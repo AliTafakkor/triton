@@ -11,6 +11,7 @@ from triton.core.io import (
     rms,
     SUPPORTED_EXTS,
 )
+from triton.core.conversion import to_mono, to_stereo, resample, requantize
 
 __all__ = [
     "mix_at_snr",
@@ -23,4 +24,8 @@ __all__ = [
     "normalize_peak",
     "rms",
     "SUPPORTED_EXTS",
+    "to_mono",
+    "to_stereo",
+    "resample",
+    "requantize",
 ]

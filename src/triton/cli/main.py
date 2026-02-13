@@ -13,12 +13,14 @@ from triton.core.io import is_audio_file, iter_audio_files, load_audio, save_aud
 from triton.cli.ingest import ingest_app
 from triton.cli.transcribe import transcribe_app
 from triton.cli.degrade import degrade_app
+from triton.cli.convert import convert_app
 
 
 app = typer.Typer(add_completion=False, help="Triton audio processing CLI")
 app.add_typer(ingest_app, name="ingest")
 app.add_typer(transcribe_app, name="transcribe")
 app.add_typer(degrade_app, name="degrade")
+app.add_typer(convert_app, name="convert")
 
 
 @app.command()
