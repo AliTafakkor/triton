@@ -6,6 +6,11 @@ platforms = ["osx-arm64"]
 version = "0.1.0"
 
 [tasks]
+# Launch the web interface
+gui = "streamlit run src/triton/app.py"
+
+# Run the CLI (e.g., pixi run triton mix --speech s.wav --noise n.wav --snr 5)
+triton = "python src/triton/cli/main.py"
 
 [dependencies]
 librosa = ">=0.11.0,<0.12"
@@ -14,6 +19,15 @@ typer = ">=0.23.1,<0.24"
 streamlit = ">=1.54.0,<2"
 pydantic = ">=2.12.5,<3"
 ffmpeg = ">=8.0.1,<9"
+feedparser = ">=6.0.11,<7"
+requests = ">=2.32.0,<3"
+
+[feature.dev.dependencies]
+pytest = ">=9.0.2,<10"
+
+[environments]
+default = { features = ["dev"] }
 
 [pypi-dependencies]
 soundfile = "*"
+
