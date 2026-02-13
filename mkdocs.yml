@@ -1,0 +1,40 @@
+site_name: Triton
+site_description: "Speech-in-noise toolkit for the CONCH Lab"
+site_url: "https://<your-github-username>.github.io/triton/"
+repo_url: "https://github.com/<your-github-username>/triton"
+repo_name: "triton"
+
+theme:
+  name: material
+  palette:
+    - scheme: slate
+      primary: teal
+      accent: cyan
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Install: install.md
+  - Quickstart: quickstart.md
+  - CLI:
+      - mix: cli/mix.md
+      - ingest: cli/ingest.md
+      - transcribe: cli/transcribe.md
+  - API:
+      - core.mixer: api/core.mixer.md
+      - ingest.rss: api/ingest.rss.md
+      - transcribe.whisper: api/transcribe.whisper.md
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: "https://github.com/<your-github-username>/triton"

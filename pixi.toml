@@ -12,6 +12,9 @@ gui = "streamlit run src/triton/app.py"
 # Run the CLI (e.g., pixi run triton mix --speech s.wav --noise n.wav --snr 5)
 triton = "python src/triton/cli/main.py"
 
+# Serve docs locally
+docs = "mkdocs serve"
+
 [dependencies]
 python = ">=3.12,<3.13"
 librosa = ">=0.11.0,<0.12"
@@ -26,8 +29,12 @@ requests = ">=2.32.0,<3"
 [feature.dev.dependencies]
 pytest = ">=9.0.2,<10"
 
+[feature.docs.dependencies]
+mkdocs = ">=1.6.1,<2"
+mkdocs-material = ">=9.6.7,<10"
+
 [environments]
-default = { features = ["dev"] }
+default = { features = ["dev", "docs"] }
 
 [pypi-dependencies]
 soundfile = "*"
