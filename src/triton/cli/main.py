@@ -11,9 +11,11 @@ import soundfile as sf
 import typer
 
 from triton.core.mixer import mix_at_snr
+from triton.cli.ingest import ingest_app
 
 
 app = typer.Typer(add_completion=False, help="Triton audio processing CLI")
+app.add_typer(ingest_app, name="ingest")
 
 
 SUPPORTED_EXTS = {".wav", ".flac", ".ogg", ".mp3", ".m4a"}
