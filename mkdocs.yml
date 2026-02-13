@@ -1,7 +1,7 @@
 site_name: Triton
 site_description: "Speech-in-noise toolkit for the CONCH Lab"
-site_url: "https://<your-github-username>.github.io/triton/"
-repo_url: "https://github.com/<your-github-username>/triton"
+site_url: "https://alitafakkor.github.io/triton/"
+repo_url: "https://github.com/alitafakkor/triton"
 repo_name: "triton"
 
 theme:
@@ -37,4 +37,4 @@ markdown_extensions:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: "https://github.com/<your-github-username>/triton"
+      link: "https://github.com/alitafakkor/triton"
