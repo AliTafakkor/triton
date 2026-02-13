@@ -11,3 +11,12 @@
 ## 3) Transcribe locally
 
 - `pixi run triton transcribe local data/moth/example.mp3 --output-dir outputs/transcripts --model tiny`
+
+## 4) Apply degradations
+
+- `pixi run triton degrade vocode data/speech --vocoder-type noise --n-bands 8`
+
+## 5) Convert formats
+
+- `pixi run triton convert resample data/audio --target-sr 16000`
+- `pixi run triton convert mono data/stereo`

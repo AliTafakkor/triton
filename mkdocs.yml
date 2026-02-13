@@ -6,6 +6,7 @@ repo_name: "triton"
 
 theme:
   name: material
+  logo: assets/logo.svg
   palette:
     - scheme: slate
       primary: teal
@@ -24,10 +25,16 @@ nav:
       - mix: cli/mix.md
       - ingest: cli/ingest.md
       - transcribe: cli/transcribe.md
+      - degrade: cli/degrade.md
+      - convert: cli/convert.md
   - API:
       - core.mixer: api/core.mixer.md
+      - core.signal: api/core.signal.md
+      - core.io: api/core.io.md
+      - core.conversion: api/core.conversion.md
       - ingest.rss: api/ingest.rss.md
       - transcribe.whisper: api/transcribe.whisper.md
+      - degrade.vocoder: api/degrade.vocoder.md
 
 markdown_extensions:
   - admonition
