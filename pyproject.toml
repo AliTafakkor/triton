@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "triton"
+version = "0.1.0"
+description = "Speech-in-noise toolkit for the CONCH Lab"
+authors = [
+    {name = "Ali Tafakkor", email = "alitafakkor@gmail.com"}
+]
+requires-python = ">=3.12"
+
+[tool.setuptools]
+packages = ["triton"]
+package-dir = {"" = "src"}
