@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 import librosa
 import numpy as np
 import soundfile as sf
+
+from triton.core.signal import to_mono_float32
 
 
 SUPPORTED_EXTS = {".wav", ".flac", ".ogg", ".mp3", ".m4a"}
@@ -56,6 +58,40 @@ def load_audio(path: Path, sr: int | None = None, mono: bool = True) -> tuple[np
 	"""
 	audio, sample_rate = librosa.load(path, sr=sr, mono=mono)
 	return audio, sample_rate
+
+
+def iter_source_audio(
+	source: Path | np.ndarray | Iterable[Path | np.ndarray],
+	*,
+	sr: int,
+) -> Iterable[np.ndarray]:
+	"""Iterate mono float32 audio from path/array source inputs.
+
+	Args:
+		source: Audio source as a path, waveform, or iterable of paths/waveforms.
+		sr: Sample rate used for loading/resampling path-based audio.
+
+	Yields:
+		Mono float32 audio waveforms.
+	"""
+	if isinstance(source, np.ndarray):
+		yield to_mono_float32(source)
+		return
+
+	if isinstance(source, Path):
+		for audio_path in iter_audio_files(source):
+			audio, _ = load_audio(audio_path, sr=sr, mono=True)
+			yield to_mono_float32(audio)
+		return
+
+	for item in source:
+		if isinstance(item, Path):
+			audio, _ = load_audio(item, sr=sr, mono=True)
+			yield to_mono_float32(audio)
+		elif isinstance(item, np.ndarray):
+			yield to_mono_float32(item)
+		else:
+			raise TypeError("Source items must be Path or numpy.ndarray.")
 
 
 def save_audio(path: Path, audio: np.ndarray, sr: int) -> None:

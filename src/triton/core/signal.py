@@ -7,6 +7,19 @@ from scipy import signal
 from scipy.signal import hilbert
 
 
+def to_mono_float32(audio: np.ndarray) -> np.ndarray:
+	"""Convert audio to mono float32 waveform.
+
+	Accepts mono (1D) or channel-first 2D audio and returns a mono 1D array.
+	"""
+	arr = np.asarray(audio, dtype=np.float32)
+	if arr.ndim == 1:
+		return arr
+	if arr.ndim == 2:
+		return np.mean(arr, axis=0, dtype=np.float32)
+	raise ValueError("Audio must be 1D or 2D.")
+
+
 def extract_envelope(
 	audio: np.ndarray,
 	sr: int,
