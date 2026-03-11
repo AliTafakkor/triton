@@ -19,14 +19,28 @@ def is_audio_file(path: Path) -> bool:
 
 
 def iter_audio_files(path: Path) -> Iterable[Path]:
-	"""Iterate over audio files in a path (file or directory)."""
+	"""Iterate over validated audio files in a path (file or directory).
+
+	Raises:
+		ValueError: If path does not exist or no supported audio files are found.
+	"""
+	path = path.expanduser().resolve()
+	if not path.exists():
+		raise ValueError(f"Path does not exist: {path}")
+
+	files: list[Path] = []
 	if path.is_file():
 		if is_audio_file(path):
-			yield path
-		return
+			files = [path]
+	else:
+		for ext in SUPPORTED_EXTS:
+			files.extend(path.rglob(f"*{ext}"))
 
-	for ext in SUPPORTED_EXTS:
-		yield from path.rglob(f"*{ext}")
+	files = sorted(files)
+	if not files:
+		raise ValueError(f"No audio files found at: {path}")
+
+	yield from files
 
 
 def load_audio(path: Path, sr: int | None = None, mono: bool = True) -> tuple[np.ndarray, int]:

@@ -44,12 +44,10 @@ def mix(
 	if not noise_path.exists() or not is_audio_file(noise_path):
 		raise typer.BadParameter("Noise path must be an audio file.")
 
-	if not speech_path.exists():
-		raise typer.BadParameter("Speech path does not exist.")
-
-	speech_files = list(iter_audio_files(speech_path))
-	if not speech_files:
-		raise typer.BadParameter("No audio files found in speech path.")
+	try:
+		speech_files = list(iter_audio_files(speech_path))
+	except ValueError as exc:
+		raise typer.BadParameter(str(exc)) from exc
 
 	noise_audio, noise_sr = load_audio(noise_path, sr=sample_rate)
 

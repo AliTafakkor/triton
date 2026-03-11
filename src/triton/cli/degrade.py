@@ -29,12 +29,10 @@ def vocode(
 	output_dir = output_dir.expanduser().resolve()
 	output_dir.mkdir(parents=True, exist_ok=True)
 
-	if not input_path.exists():
-		raise typer.BadParameter("Input path does not exist.")
-
-	files = list(iter_audio_files(input_path))
-	if not files:
-		raise typer.BadParameter("No audio files found.")
+	try:
+		files = list(iter_audio_files(input_path))
+	except ValueError as exc:
+		raise typer.BadParameter(str(exc)) from exc
 
 	for audio_path in files:
 		audio, sr = load_audio(audio_path, sr=None, mono=True)
