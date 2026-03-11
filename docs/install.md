@@ -34,3 +34,11 @@ pixi run triton --help
 
 This should display the Triton CLI help text.
 
+You can also verify the GUI:
+
+```bash
+pixi run gui
+```
+
+This should start Streamlit and print a local URL (usually `http://localhost:8501`).
+

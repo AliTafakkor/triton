@@ -2,6 +2,8 @@
 
 **Triton** is an audio signal processing toolkit for speech-in-noise research in the CONCH Lab.
 
+Triton is moving to a **project-first** workflow: you create/open a project, define canonical audio settings, add files into that project, and run processing inside that boundary.
+
 <div style="display:flex; gap:16px; flex-wrap:wrap;">
   <div style="flex:1; min-width:240px; background:#0f2d3f; padding:16px; border-radius:8px;">
     <h3>Core</h3>
@@ -13,14 +15,14 @@
   </div>
   <div style="flex:1; min-width:240px; background:#0f2d3f; padding:16px; border-radius:8px;">
     <h3>GUI</h3>
-    <p>Streamlit dashboard for quick, interactive audio experiments.</p>
+    <p>Project dashboard for create/open, file management, and interactive mixing.</p>
   </div>
 </div>
 
 ## Quickstart
 
-- Install dependencies and run the CLI.
-- Ingest podcast audio from RSS.
-- Mix at a target SNR or transcribe locally.
+- Launch GUI and create/open a project.
+- Add files and manage project assets.
+- Mix at target SNR in GUI or run CLI commands on project files.
 
 See the [Quickstart](quickstart.md) for commands.

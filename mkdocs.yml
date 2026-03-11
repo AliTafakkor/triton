@@ -21,6 +21,7 @@ nav:
   - Home: index.md
   - Install: install.md
   - Quickstart: quickstart.md
+  - GUI: gui.md
   - CLI:
       - mix: cli/mix.md
       - ingest: cli/ingest.md
@@ -32,6 +33,7 @@ nav:
       - core.signal: api/core.signal.md
       - core.io: api/core.io.md
       - core.conversion: api/core.conversion.md
+      - core.project: api/core.project.md
       - ingest.rss: api/ingest.rss.md
       - transcribe.whisper: api/transcribe.whisper.md
       - degrade.vocoder: api/degrade.vocoder.md
