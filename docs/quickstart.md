@@ -8,9 +8,11 @@
 
 - `pixi run triton ingest rss --feed https://feeds.megaphone.fm/the-moth --output-dir data/moth --limit 10`
 
-## 3) Transcribe locally
+## 3) Transcribe locally (optional feature)
 
-- `pixi run triton transcribe local data/moth/example.mp3 --output-dir outputs/transcripts --model tiny`
+Requires the `transcribe` feature (see [Install](install.md#optional-features)):
+
+- `pixi run --feature transcribe triton transcribe local data/moth/example.mp3 --output-dir outputs/transcripts --model tiny`
 
 ## 4) Apply degradations
 

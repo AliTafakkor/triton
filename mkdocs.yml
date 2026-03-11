@@ -35,6 +35,8 @@ nav:
       - ingest.rss: api/ingest.rss.md
       - transcribe.whisper: api/transcribe.whisper.md
       - degrade.vocoder: api/degrade.vocoder.md
+      - degrade.noise_generator: api/degrade.noise_generator.md
+      - degrade.noise_mixer: api/degrade.noise_mixer.md
 
 markdown_extensions:
   - admonition

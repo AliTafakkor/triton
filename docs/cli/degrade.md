@@ -2,6 +2,13 @@
 
 Apply audio degradations for psychoacoustic research.
 
+## Python API additions
+
+Triton also includes degradation utilities for generating and mixing noise in Python:
+
+- `triton.degrade.noise_generator` for LTASS, SSN, and babble generation
+- `triton.degrade.noise_mixer` for SNR-based noise addition
+
 ## vocode
 
 Apply channel vocoding (Shannon et al., 1995).
