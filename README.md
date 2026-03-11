@@ -1,4 +1,4 @@
-# Triton 🐚
+# Triton 🔱🐚
 An audio signal processing toolkit for speech-in-noise research.
 
 Triton is a modular audio utility designed to standardize stimuli preparation and signal degradation. It provides a robust, reproducible "vessel" for audio manipulation, bridging the gap between raw signal math and accessible lab tools.
