@@ -11,4 +11,4 @@ The CLI: Built for high-volume batch processing. Allows for rapid transformation
 The HTML GUI: A Streamlit-based web dashboard. Offers a drag-and-drop interface for lab members to test degradations, visualize waveforms, and download processed files without writing code.
 
 Why Pixi?
-Reproducibility is the priority. Triton uses Pixi to lock the environment, ensuring that heavy dependencies—like ffmpeg and librosa—behave identically across different operating systems and machines.
+Reproducibility is the priority. Triton uses Pixi to lock the environment, ensuring that heavy dependencies—like ffmpeg and librosa—behave identically across different operating systems and machines. A single `pixi.lock` file works seamlessly on both macOS (Apple Silicon) and Linux, enabling smooth collaboration and cross-platform development.
