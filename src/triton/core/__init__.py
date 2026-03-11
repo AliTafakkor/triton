@@ -13,6 +13,25 @@ from triton.core.io import (
     SUPPORTED_EXTS,
 )
 from triton.core.conversion import to_mono, to_stereo, resample, requantize
+from triton.core.project import (
+    Project,
+    PROJECT_CONFIG_NAME,
+    SUPPORTED_AUDIO_SUFFIXES,
+    project_config_path,
+    project_raw_dir,
+    initialize_project_tree,
+    write_project_config,
+    load_project_config,
+    create_project,
+    load_recent_projects,
+    save_recent_projects,
+    register_recent_project,
+    list_project_files,
+    add_project_file,
+    delete_project_file,
+    rename_project_file,
+    sanitize_filename,
+)
 
 __all__ = [
     "mix_at_snr",
@@ -31,4 +50,21 @@ __all__ = [
     "to_stereo",
     "resample",
     "requantize",
+    "Project",
+    "PROJECT_CONFIG_NAME",
+    "SUPPORTED_AUDIO_SUFFIXES",
+    "project_config_path",
+    "project_raw_dir",
+    "initialize_project_tree",
+    "write_project_config",
+    "load_project_config",
+    "create_project",
+    "load_recent_projects",
+    "save_recent_projects",
+    "register_recent_project",
+    "list_project_files",
+    "add_project_file",
+    "delete_project_file",
+    "rename_project_file",
+    "sanitize_filename",
 ]

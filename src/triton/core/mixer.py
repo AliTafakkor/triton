@@ -5,10 +5,12 @@ Dependency-light math for speech-in-noise mixing.
 
 from __future__ import annotations
 
-import librosa
 import numpy as np
 
-from triton.core.io import rms, normalize_peak
+from triton.core.io import normalize_peak, rms
+
+
+def _match_length(noise: np.ndarray, target_length: int) -> np.ndarray:
 	"""Tile or crop noise to match target length along the last axis."""
 	noise = np.asarray(noise, dtype=np.float32)
 	if noise.shape[-1] == 0:
@@ -42,8 +44,9 @@ def mix_at_snr(speech: np.ndarray, noise: np.ndarray, snr_db: float) -> np.ndarr
 
 	noise = _match_length(noise, speech.shape[-1])
 
-    speech_rms = rms(speech)
-    noise_rms = rms(noise)
+	speech_rms = float(rms(speech))
+	noise_rms = float(rms(noise))
+	if noise_rms <= 0:
 		raise ValueError("Noise RMS is zero; cannot scale to target SNR.")
 
 	target_noise_rms = speech_rms / (10 ** (snr_db / 20.0))
@@ -52,4 +55,4 @@ def mix_at_snr(speech: np.ndarray, noise: np.ndarray, snr_db: float) -> np.ndarr
 	scaled_noise = noise * scale
 	mixed = speech + scaled_noise
 
-    return normalize_peak(mixed)
+	return normalize_peak(mixed)
