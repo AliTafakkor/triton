@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import librosa
 import numpy as np
+import plotly.graph_objects as go
 import soundfile as sf
 import streamlit as st
 
@@ -482,6 +483,90 @@ def _render_styles() -> None:
 			background: rgba(255, 255, 255, 0.85);
 			border: 1px solid rgba(16, 41, 53, 0.14);
 		}
+
+		/* Force dark theme even when user/browser selects light mode. */
+		html[data-theme="light"],
+		body[data-theme="light"],
+		[data-theme="light"] {
+			color-scheme: dark !important;
+			--bg-top: #06141f !important;
+			--bg-mid: #0e3040 !important;
+			--bg-bottom: #d7e8ea !important;
+			--panel: rgba(7, 30, 43, 0.74) !important;
+			--panel-border: rgba(143, 205, 206, 0.22) !important;
+			--panel-soft: rgba(250, 252, 252, 0.06) !important;
+			--ink: #ebf6f7 !important;
+			--muted: #b7d0d4 !important;
+			--hero-start: rgba(4, 27, 39, 0.92) !important;
+			--hero-end: rgba(14, 61, 78, 0.88) !important;
+			--hero-kicker: #ffd6a0 !important;
+			--hero-body: #cbe2e5 !important;
+			--hero-pill-bg: rgba(255, 159, 28, 0.16) !important;
+			--hero-pill-text: #ffe9c7 !important;
+			--card-top-bg: rgba(255, 255, 255, 0.06) !important;
+			--card-subtle-text: #cbe2e5 !important;
+			--metric-start: rgba(9, 40, 55, 0.95) !important;
+			--metric-end: rgba(9, 40, 55, 0.7) !important;
+		}
+
+		html[data-theme="light"] [data-testid="stSidebar"],
+		body[data-theme="light"] [data-testid="stSidebar"],
+		[data-theme="light"] [data-testid="stSidebar"] {
+			background: rgba(5, 20, 33, 0.9) !important;
+			border-right: 1px solid rgba(143, 205, 206, 0.18) !important;
+		}
+
+		html[data-theme="light"] .stTextInput input,
+		html[data-theme="light"] .stSelectbox div[data-baseweb="select"],
+		html[data-theme="light"] .stTextArea textarea,
+		body[data-theme="light"] .stTextInput input,
+		body[data-theme="light"] .stSelectbox div[data-baseweb="select"],
+		body[data-theme="light"] .stTextArea textarea,
+		[data-theme="light"] .stTextInput input,
+		[data-theme="light"] .stSelectbox div[data-baseweb="select"],
+		[data-theme="light"] .stTextArea textarea {
+			background: rgba(255, 255, 255, 0.06) !important;
+			border: 1px solid rgba(143, 205, 206, 0.22) !important;
+		}
+
+		html[data-theme="light"] .stButton > button[kind="secondary"],
+		html[data-theme="light"] .stButton > button[kind="tertiary"],
+		html[data-theme="light"] .stDownloadButton > button[kind="secondary"],
+		html[data-theme="light"] .stDownloadButton > button[kind="tertiary"],
+		body[data-theme="light"] .stButton > button[kind="secondary"],
+		body[data-theme="light"] .stButton > button[kind="tertiary"],
+		body[data-theme="light"] .stDownloadButton > button[kind="secondary"],
+		body[data-theme="light"] .stDownloadButton > button[kind="tertiary"],
+		[data-theme="light"] .stButton > button[kind="secondary"],
+		[data-theme="light"] .stButton > button[kind="tertiary"],
+		[data-theme="light"] .stDownloadButton > button[kind="secondary"],
+		[data-theme="light"] .stDownloadButton > button[kind="tertiary"] {
+			color: #ebf6f7 !important;
+			border: 1px solid rgba(143, 205, 206, 0.22) !important;
+			background: rgba(255, 255, 255, 0.06) !important;
+		}
+
+		html[data-theme="light"] .stButton > button[kind="secondary"] *,
+		html[data-theme="light"] .stButton > button[kind="tertiary"] *,
+		html[data-theme="light"] .stDownloadButton > button[kind="secondary"] *,
+		html[data-theme="light"] .stDownloadButton > button[kind="tertiary"] *,
+		body[data-theme="light"] .stButton > button[kind="secondary"] *,
+		body[data-theme="light"] .stButton > button[kind="tertiary"] *,
+		body[data-theme="light"] .stDownloadButton > button[kind="secondary"] *,
+		body[data-theme="light"] .stDownloadButton > button[kind="tertiary"] *,
+		[data-theme="light"] .stButton > button[kind="secondary"] *,
+		[data-theme="light"] .stButton > button[kind="tertiary"] *,
+		[data-theme="light"] .stDownloadButton > button[kind="secondary"] *,
+		[data-theme="light"] .stDownloadButton > button[kind="tertiary"] * {
+			color: #ebf6f7 !important;
+		}
+
+		html[data-theme="light"] button[data-baseweb="tab"],
+		body[data-theme="light"] button[data-baseweb="tab"],
+		[data-theme="light"] button[data-baseweb="tab"] {
+			background: rgba(255, 255, 255, 0.06) !important;
+			border: 1px solid rgba(143, 205, 206, 0.18) !important;
+		}
 		</style>
 		""",
 		unsafe_allow_html=True,
@@ -615,24 +700,6 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 		st.info("No files have been imported to this project yet.")
 		return
 
-	search_col, sort_col = st.columns([3, 2])
-	search_text = search_col.text_input("Search files", value="", placeholder="Type a file name...")
-	sort_mode = sort_col.selectbox("Sort", options=["name", "size_desc", "size_asc"], format_func=lambda value: {
-		"name": "Name (A-Z)",
-		"size_desc": "Size (largest first)",
-		"size_asc": "Size (smallest first)",
-	}[value])
-
-	visible_files = [path for path in project_files if search_text.strip().lower() in path.name.lower()]
-	if sort_mode == "size_desc":
-		visible_files = sorted(visible_files, key=lambda path: path.stat().st_size, reverse=True)
-	elif sort_mode == "size_asc":
-		visible_files = sorted(visible_files, key=lambda path: path.stat().st_size)
-
-	if not visible_files:
-		st.info("No files match your search.")
-		return
-
 	selected_spectrogram = st.session_state.get("selected_spectrogram_file")
 	selected_count = 0
 
@@ -640,89 +707,149 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 	list_col, panel_col = st.columns([1.9, 1.1], gap="large")
 
 	with list_col:
-		for index, file_path in enumerate(visible_files):
-			spec_path = _spectrogram_path(file_path)
-			check_key = f"import_checked_{_pipeline_key(str(file_path))}"
-			with st.container(border=True):
-				line1_check_col, line1_name_col, line1_player_col, line1_buttons_col = st.columns([0.8, 3.0, 2.8, 3.4])
-				with line1_check_col:
-					checked = st.checkbox("", key=check_key, label_visibility="collapsed")
-					if checked:
-						selected_count += 1
-				with line1_name_col:
-					new_name = st.text_input(
-						"",
-						value=file_path.name,
-						key=f"rename_input_{index}",
-						label_visibility="collapsed",
-					)
-				with line1_player_col:
-					st.audio(str(file_path), format="audio/wav")
-				with line1_buttons_col:
-					spect_col, rename_col, remove_col = st.columns(3)
-					if spect_col.button("Spec", key=f"list_spec_{index}"):
-						if not spec_path.exists():
-							try:
-								_generate_file_spectrogram(file_path, project)
-							except Exception as exc:
-								st.error(f"Could not generate spectrogram for {file_path.name}: {exc}")
+		search_col, sort_col = st.columns([3, 2])
+		search_text = search_col.text_input("Search files", value="", placeholder="Type a file name...")
+		sort_mode = sort_col.selectbox("Sort", options=["name", "size_desc", "size_asc"], format_func=lambda value: {
+			"name": "Name (A-Z)",
+			"size_desc": "Size (largest first)",
+			"size_asc": "Size (smallest first)",
+		}[value])
+
+		visible_files = [path for path in project_files if search_text.strip().lower() in path.name.lower()]
+		if sort_mode == "size_desc":
+			visible_files = sorted(visible_files, key=lambda path: path.stat().st_size, reverse=True)
+		elif sort_mode == "size_asc":
+			visible_files = sorted(visible_files, key=lambda path: path.stat().st_size)
+
+		if not visible_files:
+			st.info("No files match your search.")
+		else:
+			for index, file_path in enumerate(visible_files):
+				spec_path = _spectrogram_path(file_path)
+				check_key = f"import_checked_{_pipeline_key(str(file_path))}"
+				with st.container(border=True):
+					line1_check_col, line1_name_col, line1_player_col, line1_buttons_col = st.columns([0.8, 3.0, 2.8, 3.4])
+					with line1_check_col:
+						checked = st.checkbox("Select file", key=check_key, label_visibility="collapsed")
+						if checked:
+							selected_count += 1
+					with line1_name_col:
+						new_name = st.text_input(
+							"Rename file",
+							value=file_path.name,
+							key=f"rename_input_{index}",
+							label_visibility="collapsed",
+						)
+					with line1_player_col:
+						st.audio(str(file_path), format="audio/wav")
+					with line1_buttons_col:
+						spect_col, rename_col, remove_col = st.columns(3)
+						if spect_col.button("Spec", key=f"list_spec_{index}"):
+							if not spec_path.exists():
+								try:
+									_generate_file_spectrogram(file_path, project)
+								except Exception as exc:
+									st.error(f"Could not generate spectrogram for {file_path.name}: {exc}")
+								else:
+									st.session_state["selected_spectrogram_file"] = str(file_path)
+									st.rerun()
 							else:
 								st.session_state["selected_spectrogram_file"] = str(file_path)
 								st.rerun()
-						else:
-							st.session_state["selected_spectrogram_file"] = str(file_path)
-							st.rerun()
-					if rename_col.button("Rename", key=f"rename_btn_{index}"):
-						try:
-							renamed = _rename_project_file(file_path, new_name)
-						except Exception as exc:
-							st.error(f"Could not rename {file_path.name}: {exc}")
-						else:
+						if rename_col.button("Rename", key=f"rename_btn_{index}"):
+							try:
+								renamed = _rename_project_file(file_path, new_name)
+							except Exception as exc:
+								st.error(f"Could not rename {file_path.name}: {exc}")
+							else:
+								if spec_path.exists():
+									_spectrogram_path(file_path).rename(_spectrogram_path(renamed))
+								if st.session_state.get("selected_spectrogram_file") == str(file_path):
+									st.session_state["selected_spectrogram_file"] = str(renamed)
+								st.rerun()
+						if remove_col.button("Remove", key=f"remove_file_{index}"):
+							_delete_project_file(file_path)
 							if spec_path.exists():
-								_spectrogram_path(file_path).rename(_spectrogram_path(renamed))
+								spec_path.unlink()
 							if st.session_state.get("selected_spectrogram_file") == str(file_path):
-								st.session_state["selected_spectrogram_file"] = str(renamed)
+								st.session_state.pop("selected_spectrogram_file", None)
+							st.session_state.pop(check_key, None)
 							st.rerun()
-					if remove_col.button("Remove", key=f"remove_file_{index}"):
-						_delete_project_file(file_path)
-						if spec_path.exists():
-							spec_path.unlink()
-						if st.session_state.get("selected_spectrogram_file") == str(file_path):
-							st.session_state.pop("selected_spectrogram_file", None)
-						st.session_state.pop(check_key, None)
-						st.rerun()
 
-				line2_path_col, line2_details_col = st.columns([7, 3])
-				with line2_path_col:
-					st.caption(str(file_path))
-				with line2_details_col:
-					st.caption(f"{_format_file_size(file_path.stat().st_size)} | {file_path.suffix.lower()}")
+					line2_path_col, line2_details_col = st.columns([7, 3])
+					with line2_path_col:
+						st.caption(str(file_path))
+					with line2_details_col:
+						st.caption(f"{_format_file_size(file_path.stat().st_size)} | {file_path.suffix.lower()}")
 
 	with panel_col:
-		st.markdown("### Spectrogram")
-		selected_path = next((path for path in project_files if str(path) == str(selected_spectrogram)), None)
-		if selected_path is None:
-			st.caption("Click Spec on a file to open its spectrogram here.")
-		else:
-			spec_path = _spectrogram_path(selected_path)
-			st.caption(selected_path.name)
-			if not spec_path.exists():
-				st.warning("No spectrogram found for this file. Click Spec again to generate it.")
+		with st.container(border=True):
+			st.markdown("### Spectrogram")
+			selected_path = next((path for path in project_files if str(path) == str(selected_spectrogram)), None)
+			if selected_path is None:
+				st.caption("Click Spec on a file to open its spectrogram here.")
 			else:
-				try:
-					result, _ = load_spectrogram(spec_path)
-				except Exception as exc:
-					st.error(f"Could not load spectrogram for {selected_path.name}: {exc}")
+				spec_path = _spectrogram_path(selected_path)
+				st.caption(selected_path.name)
+				if not spec_path.exists():
+					st.warning("No spectrogram found for this file. Click Spec again to generate it.")
 				else:
-					values = result.values
-					min_val = float(np.min(values))
-					max_val = float(np.max(values))
-					if max_val - min_val > 1e-6:
-						norm = (values - min_val) / (max_val - min_val)
+					try:
+						result, _ = load_spectrogram(spec_path)
+					except Exception as exc:
+						st.error(f"Could not load spectrogram for {selected_path.name}: {exc}")
 					else:
-						norm = np.zeros_like(values)
-					image = np.flipud((norm * 255.0).astype(np.uint8))
-					st.image(image, caption=f"{result.kind.upper()} spectrogram")
+						times = np.asarray(result.times, dtype=np.float32)
+						freqs = np.asarray(result.freqs, dtype=np.float32)
+						if result.values.size == 0 or times.size == 0 or freqs.size == 0:
+							st.warning("Spectrogram data is empty.")
+						else:
+							values = np.asarray(result.values, dtype=np.float32)
+							# Keep the interactive chart responsive by capping rendered cells.
+							max_time_bins = 700
+							max_freq_bins = 256
+							time_step = max(1, int(np.ceil(values.shape[1] / max_time_bins)))
+							freq_step = max(1, int(np.ceil(values.shape[0] / max_freq_bins)))
+
+							if time_step > 1 or freq_step > 1:
+								plot_values = values[::freq_step, ::time_step]
+								plot_times = times[::time_step]
+								plot_freqs = freqs[::freq_step]
+								st.caption(
+									f"Interactive preview downsampled: time x{time_step}, frequency x{freq_step}"
+								)
+							else:
+								plot_values = values
+								plot_times = times
+								plot_freqs = freqs
+
+							fig = go.Figure(
+								data=go.Heatmap(
+									z=plot_values,
+									x=plot_times,
+									y=plot_freqs,
+									colorscale="Gray",
+									zmin=-80.0,
+									zmax=0.0,
+									colorbar={"title": "dB"},
+								)
+							)
+							fig.update_layout(
+								title=f"{result.kind.upper()} Spectrogram",
+								xaxis_title="Time (s)",
+								yaxis_title="Frequency (Hz)",
+								plot_bgcolor="rgba(16, 41, 53, 1)",
+								paper_bgcolor="rgba(0, 0, 0, 0)",
+								font={"color": "#e6f2f2"},
+								margin={"l": 60, "r": 20, "t": 40, "b": 50},
+							)
+							fig.update_xaxes(showgrid=False)
+							fig.update_yaxes(showgrid=False)
+							st.plotly_chart(
+								fig,
+								width="stretch",
+								config={"scrollZoom": True, "displaylogo": False},
+							)
 
 	st.caption(f"Selected in list: {selected_count}")
 
@@ -1170,7 +1297,7 @@ def _render_pipelines_tab(project: Project, project_files: list[Path]) -> None:
 								disabled=step_count <= 1,
 								on_click=_request_delete_pipeline_step,
 								args=(order_index,),
-								use_container_width=True,
+								width="stretch",
 							)
 						steps.append(step)
 						st.caption("Step options")

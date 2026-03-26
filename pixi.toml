@@ -29,6 +29,7 @@ pydantic = ">=2.12.5,<3"
 ffmpeg = ">=8.0.1,<9"
 feedparser = ">=6.0.11,<7"
 requests = ">=2.32.0,<3"
+plotly = ">=6.0.0,<7"
 
 [feature.dev.dependencies]
 pytest = ">=9.0.2,<10"
@@ -42,6 +43,7 @@ mkdocs-material = ">=9.6.7,<10"
 
 [environments]
 default = { features = ["dev", "docs"] }
+transcribe = { features = ["dev", "docs", "transcribe"] }
 
 [pypi-dependencies]
 soundfile = "*"
