@@ -49,6 +49,37 @@ Mix speech and noise interactively:
 
 Inputs are normalized in-session to project audio settings before mixing.
 
+## Pipelines Tab
+
+The Pipelines tab is the default workspace view for project processing.
+
+- select an existing pipeline
+- run it on one or more project files
+- create/edit pipelines from the right-side editor
+- define ordered steps and step-specific options
+
+### Pipeline Run Storage
+
+Each pipeline execution creates a dedicated run folder and each step writes to its own subfolder:
+
+```text
+data/derived/pipelines/<pipeline_key>/run_<timestamp>_<id>/
+  step_01_<step_key>/
+  step_02_<step_key>/
+  ...
+```
+
+For each processed input file, every step emits a step artifact (`.wav`) and a sidecar provenance JSON (`.wav.json`).
+
+### Sidecar Provenance
+
+Step sidecars include:
+
+- source file path
+- ordered action history up to that step
+- step options and sample-rate transitions
+- pipeline name/run identifier
+
 ## Roadmap Tab
 
 The roadmap tab tracks next GUI steps:

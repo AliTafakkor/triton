@@ -55,3 +55,5 @@ Requires the `transcribe` feature (see [Install](install.md#optional-features)):
 
 - Project lifecycle and storage logic now live in `triton.core.project` so GUI and future CLI project commands can share the same implementation.
 - Current CLI commands remain path-oriented; project-first CLI commands can be layered on top of the shared core module.
+- Pipeline runs are grouped by run folder, and each step writes to its own step folder under `data/derived/pipelines/...`.
+- Generated artifacts include sidecar provenance JSON files (`<artifact>.<suffix>.json`) to record source and action history.

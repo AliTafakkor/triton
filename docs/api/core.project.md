@@ -22,6 +22,21 @@ Typed project model with lifecycle and convenience methods.
 - `add_file(filename, content)`
 - `to_dict()`
 
+## Pipeline
+
+Typed pipeline model persisted in `triton.toml`.
+
+### Fields
+
+- `name`
+- `steps` (ordered action keys)
+- `step_options` (per-step settings keyed by step index)
+
+### Pipeline helpers
+
+- `load_project_pipelines(project_dir)`
+- `save_project_pipelines(project_dir, pipelines)`
+
 ## Lifecycle helpers
 
 - `create_project(project_dir, sample_rate, channel_mode)`

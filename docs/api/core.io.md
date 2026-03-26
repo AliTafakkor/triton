@@ -16,7 +16,25 @@ Save an audio file.
 
 **Signature**
 
-`save_audio(path, audio, sr)`
+`save_audio(path, audio, sr, source=None, actions=None, extra=None)`
+
+Also writes a provenance sidecar JSON at `<path><suffix>.json`.
+
+## write_sidecar
+
+Write provenance sidecar metadata for any Triton-generated artifact.
+
+**Signature**
+
+`write_sidecar(path, source=None, actions=None, extra=None) -> Path`
+
+## sidecar_path
+
+Return sidecar path for a generated artifact.
+
+**Signature**
+
+`sidecar_path(path) -> Path`
 
 ## normalize_peak
 
