@@ -17,6 +17,17 @@ RECENT_PROJECTS_LIMIT = 8
 APP_CONFIG_DIR = Path.home() / ".config" / "triton"
 RECENT_PROJECTS_PATH = APP_CONFIG_DIR / "recent_projects.json"
 SUPPORTED_AUDIO_SUFFIXES = {".wav", ".flac", ".ogg", ".mp3", ".m4a"}
+DEFAULT_SPECTROGRAM_SETTINGS: dict[str, object] = {
+	"type": "stft",
+	"n_fft": 1024,
+	"hop_length": 256,
+	"win_length": 1024,
+	"window": "hann",
+	"n_mels": 128,
+	"fmin": 32.7,
+	"fmax": 8000.0,
+	"power": 2.0,
+}
 
 
 @dataclass(slots=True)
@@ -99,6 +110,7 @@ def write_project_config(project_dir: Path, sample_rate: int, channel_mode: Chan
 		project_root=project_dir,
 		sample_rate=sample_rate,
 		channel_mode=channel_mode,
+		spectrogram_settings=DEFAULT_SPECTROGRAM_SETTINGS,
 		pipelines=[],
 	)
 	project_config_path(project_dir).write_text(config_text, encoding="utf-8")
@@ -106,6 +118,24 @@ def write_project_config(project_dir: Path, sample_rate: int, channel_mode: Chan
 
 def load_project_config(project_dir: Path) -> Project:
 	return Project.load(project_dir)
+
+
+def load_project_spectrogram_settings(project_dir: Path) -> dict[str, object]:
+	config_path = project_config_path(project_dir)
+	if not config_path.exists():
+		raise FileNotFoundError(f"No {PROJECT_CONFIG_NAME} found in {project_dir}.")
+
+	parsed = tomllib.loads(config_path.read_text(encoding="utf-8"))
+	raw = parsed.get("spectrogram", {})
+	if not isinstance(raw, dict):
+		raw = {}
+
+	merged = dict(DEFAULT_SPECTROGRAM_SETTINGS)
+	for key in DEFAULT_SPECTROGRAM_SETTINGS:
+		if key in raw:
+			merged[key] = raw[key]
+
+	return merged
 
 
 def load_project_pipelines(project_dir: Path) -> list[Pipeline]:
@@ -164,12 +194,14 @@ def save_project_pipelines(project_dir: Path, pipelines: list[Pipeline]) -> None
 	project_name = str(project.get("name", project_dir.name))
 	sample_rate = int(audio.get("sample_rate", 16000))
 	channel_mode = str(audio.get("channels", "mono"))
+	spectrogram_settings = load_project_spectrogram_settings(project_dir)
 
 	config_text = _serialize_project_config(
 		project_name=project_name,
 		project_root=project_dir,
 		sample_rate=sample_rate,
 		channel_mode=channel_mode,
+		spectrogram_settings=spectrogram_settings,
 		pipelines=pipelines,
 	)
 	config_path.write_text(config_text, encoding="utf-8")
@@ -259,8 +291,14 @@ def _serialize_project_config(
 	project_root: Path,
 	sample_rate: int,
 	channel_mode: str,
+	spectrogram_settings: dict[str, object],
 	pipelines: list[Pipeline],
 ) -> str:
+	settings = dict(DEFAULT_SPECTROGRAM_SETTINGS)
+	for key in DEFAULT_SPECTROGRAM_SETTINGS:
+		if key in spectrogram_settings:
+			settings[key] = spectrogram_settings[key]
+
 	lines = [
 		"[project]",
 		f"name = {_toml_string(project_name)}",
@@ -275,6 +313,17 @@ def _serialize_project_config(
 		'normalized = "data/normalized"',
 		'derived = "data/derived"',
 		'metadata = "metadata"',
+		"",
+		"[spectrogram]",
+		f"type = {_toml_string(str(settings['type']))}",
+		f"n_fft = {int(settings['n_fft'])}",
+		f"hop_length = {int(settings['hop_length'])}",
+		f"win_length = {int(settings['win_length'])}",
+		f"window = {_toml_string(str(settings['window']))}",
+		f"n_mels = {int(settings['n_mels'])}",
+		f"fmin = {float(settings['fmin'])}",
+		f"fmax = {float(settings['fmax'])}",
+		f"power = {float(settings['power'])}",
 	]
 
 	for pipeline in pipelines:

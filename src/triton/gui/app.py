@@ -23,14 +23,16 @@ from triton.core.project import (
 	list_project_files,
 	load_project_config,
 	load_project_pipelines,
+	load_project_spectrogram_settings,
 	load_recent_projects,
 	project_raw_dir,
 	rename_project_file,
 	register_recent_project,
 	save_project_pipelines,
 )
-from triton.core.io import load_audio, normalize_peak, save_audio
+from triton.core.io import load_audio, normalize_peak, save_audio, write_sidecar
 from triton.core.conversion import requantize
+from triton.core.spectrogram import compute_spectrogram, load_spectrogram, save_spectrogram
 from triton.degrade.vocoder import noise_vocode
 
 
@@ -91,13 +93,38 @@ def _format_file_size(size_bytes: int) -> str:
 	return f"{size_bytes} B"
 
 
-def _save_uploaded_project_files(project_dir: Path, uploaded_files: list[object]) -> int:
-	saved_count = 0
-	for uploaded_file in uploaded_files:
-		add_project_file(project_dir, uploaded_file.name, uploaded_file.getvalue())
-		saved_count += 1
+def _spectrogram_path(audio_path: Path) -> Path:
+	return audio_path.with_suffix(audio_path.suffix + ".spectrogram.npz")
 
-	return saved_count
+
+def _generate_file_spectrogram(audio_path: Path, project: Project) -> Path:
+	settings = load_project_spectrogram_settings(project.path)
+	audio, sr = load_audio(audio_path, sr=None, mono=False)
+	result = compute_spectrogram(audio, sr, settings)
+	out_path = _spectrogram_path(audio_path)
+	save_spectrogram(out_path, result, settings)
+	write_sidecar(
+		out_path,
+		source={"path": str(audio_path.resolve())},
+		actions=[{"step": "spectrogram", "options": settings}],
+		extra={
+			"spectrogram": {
+				"type": result.kind,
+				"shape": [int(result.values.shape[0]), int(result.values.shape[1])],
+			}
+		},
+	)
+	return out_path
+
+
+def _save_uploaded_project_files(project: Project, uploaded_files: list[object]) -> list[Path]:
+	saved_paths: list[Path] = []
+	for uploaded_file in uploaded_files:
+		path = add_project_file(project.path, uploaded_file.name, uploaded_file.getvalue())
+		saved_paths.append(path)
+		_generate_file_spectrogram(path, project)
+
+	return saved_paths
 
 
 def _delete_project_file(file_path: Path) -> None:
@@ -448,81 +475,105 @@ def _render_project_launcher() -> None:
 							st.rerun()
 
 
-def _render_file_library(project_dir: Path, project_files: list[Path]) -> None:
-	st.markdown("### Project library")
-	st.caption(f"Raw project assets live in {project_raw_dir(project_dir)}")
+def _render_file_library(project: Project, project_files: list[Path]) -> None:
+	st.markdown("### Import Files")
+	st.caption(f"Imported source files are stored in {project_raw_dir(project.path)}")
 
 	add_col, count_col = st.columns([2, 3])
 	with add_col:
 		with st.form("project_file_upload_form"):
 			uploaded_files = st.file_uploader(
-				"Add files to project",
+				"Import audio files",
 				type=["wav", "flac", "ogg", "mp3", "m4a"],
 				accept_multiple_files=True,
 				key="project_file_upload",
 			)
-			upload_submitted = st.form_submit_button("Add selected files", type="primary")
+			upload_submitted = st.form_submit_button("Import selected files", type="primary")
 
 		if upload_submitted:
 			if not uploaded_files:
-				st.error("Choose at least one file to add.")
+				st.error("Choose at least one file to import.")
 			else:
-				saved_count = _save_uploaded_project_files(project_dir, list(uploaded_files))
-				st.success(f"Added {saved_count} file(s) to the project.")
+				saved_paths = _save_uploaded_project_files(project, list(uploaded_files))
+				st.success(f"Imported {len(saved_paths)} file(s) and precomputed spectrograms.")
 				st.rerun()
 
 	with count_col:
 		st.markdown(
 			f"""
 			<div style="height: 100%; min-height: 136px; padding: 18px 20px; border-radius: 22px; background: var(--card-top-bg); border: 1px solid var(--panel-border);">
-			  <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--hero-kicker); margin-bottom: 8px;">Library status</div>
+			  <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--hero-kicker); margin-bottom: 8px;">Import status</div>
 			  <div style="font-size: 36px; font-weight: 800; margin-bottom: 6px;">{len(project_files)}</div>
-			  <div style="color: var(--card-subtle-text);">audio file(s) currently stored in this project.</div>
+			  <div style="color: var(--card-subtle-text);">file(s) available for playback, spectrogram, and pipelines.</div>
 			</div>
 			""",
 			unsafe_allow_html=True,
 		)
 
 	if not project_files:
-		st.info("No files have been added to this project yet.")
+		st.info("No files have been imported to this project yet.")
 		return
 
+	selected_spectrogram = st.session_state.get("selected_spectrogram_file")
+
 	for index, file_path in enumerate(project_files):
-		row_background = "rgba(7, 30, 43, 0.72)" if index % 2 == 0 else "rgba(12, 40, 56, 0.64)"
-		row_border = "rgba(143, 205, 206, 0.20)" if index % 2 == 0 else "rgba(143, 205, 206, 0.14)"
-		st.markdown(
-			f"""
-			<div style="height: 0; border-top: 22px solid {row_background}; border-left: 1px solid {row_border}; border-right: 1px solid {row_border}; border-radius: 8px 8px 0 0; margin-top: 4px;"></div>
-			""",
-			unsafe_allow_html=True,
-		)
+		spec_path = _spectrogram_path(file_path)
+		with st.container(border=True):
+			head_col, action_col = st.columns([3, 2])
+			with head_col:
+				st.markdown(f"#### {file_path.name}")
+				st.caption(f"{_format_file_size(file_path.stat().st_size)} | {file_path.suffix.lower()}")
+				st.audio(str(file_path), format="audio/wav")
 
-		with st.form(f"rename_file_{index}"):
-			row_col1, row_col2, row_col3, row_col4 = st.columns([6.0, 1.1, 1.1, 2.0])
-			with row_col1:
-				new_name = st.text_input("File name", value=file_path.name, key=f"rename_input_{index}", label_visibility="collapsed")
-				st.caption(str(file_path))
-			with row_col2:
-				st.caption(f"{file_path.suffix.lower()}")
-			with row_col3:
-				st.caption(_format_file_size(file_path.stat().st_size))
-			with row_col4:
-				action_col1, action_col2 = st.columns(2)
-				rename_submitted = action_col1.form_submit_button("✏️", help="Rename file")
-				remove_submitted = action_col2.form_submit_button("🗑️", help="Remove file")
+			with action_col:
+				if st.button("Show Spectrogram", key=f"show_spectrogram_{index}"):
+					if not spec_path.exists():
+						try:
+							_generate_file_spectrogram(file_path, project)
+						except Exception as exc:
+							st.error(f"Could not generate spectrogram for {file_path.name}: {exc}")
+							continue
+					st.session_state["selected_spectrogram_file"] = str(file_path)
+					selected_spectrogram = str(file_path)
 
-			if rename_submitted:
-				try:
-					_rename_project_file(file_path, new_name)
-				except Exception as exc:
-					st.error(f"Could not rename {file_path.name}: {exc}")
-				else:
-					st.success(f"Renamed to {new_name}")
+				with st.form(f"rename_file_{index}"):
+					new_name = st.text_input("Rename file", value=file_path.name, key=f"rename_input_{index}")
+					rename_submitted = st.form_submit_button("Rename")
+					if rename_submitted:
+						try:
+							renamed = _rename_project_file(file_path, new_name)
+						except Exception as exc:
+							st.error(f"Could not rename {file_path.name}: {exc}")
+						else:
+							if spec_path.exists():
+								spec_target = _spectrogram_path(renamed)
+								spec_path.rename(spec_target)
+							st.success(f"Renamed to {new_name}")
+							st.rerun()
+
+				if st.button("Remove", key=f"remove_file_{index}"):
+					_delete_project_file(file_path)
+					if spec_path.exists():
+						spec_path.unlink()
+					if selected_spectrogram == str(file_path):
+						st.session_state.pop("selected_spectrogram_file", None)
 					st.rerun()
 
-			if remove_submitted:
-				_delete_project_file(file_path)
-				st.rerun()
+			if selected_spectrogram == str(file_path):
+				try:
+					result, _ = load_spectrogram(spec_path)
+				except Exception as exc:
+					st.error(f"Could not load spectrogram for {file_path.name}: {exc}")
+				else:
+					values = result.values
+					min_val = float(np.min(values))
+					max_val = float(np.max(values))
+					if max_val - min_val > 1e-6:
+						norm = (values - min_val) / (max_val - min_val)
+					else:
+						norm = np.zeros_like(values)
+					image = np.flipud((norm * 255.0).astype(np.uint8))
+					st.image(image, caption=f"{result.kind.upper()} spectrogram")
 
 
 def _pipeline_key(name: str) -> str:
@@ -1010,26 +1061,26 @@ def _render_project_workspace(project: Project) -> None:
 			_clear_active_project()
 			st.rerun()
 
-	pipelines_tab, overview_tab, mix_tab, roadmap_tab = st.tabs(["Pipelines", "Overview", "Mix", "Roadmap"])
+	pipelines_tab, import_tab, mix_tab, roadmap_tab = st.tabs(["Pipelines", "Import", "Mix", "Roadmap"])
 
 	with pipelines_tab:
 		_render_pipelines_tab(project, project_files)
 
-	with overview_tab:
+	with import_tab:
 		metric_col1, metric_col2, metric_col3 = st.columns(3)
 		metric_col1.metric("Project sample rate", f"{target_sr} Hz")
 		metric_col2.metric("Channel policy", channel_mode)
 		metric_col3.metric("Stored files", str(len(project_files)))
 
-		st.markdown("### Active project")
+		st.markdown("### Import Workspace")
 		st.write(
-			"This workspace starts from a concrete project on disk. The project owns the canonical audio settings, and stored assets are managed inside that boundary."
+			"Import source files into the project, preview them, and inspect precomputed spectrograms built from project defaults."
 		)
 		st.write(
-			"The file library below is the first step toward project-native import, ingest, and processing instead of ad hoc one-off uploads."
+			"Imported files are stored in project raw storage and get spectrogram artifacts generated automatically."
 		)
 
-		_render_file_library(project_dir, project_files)
+		_render_file_library(project, project_files)
 
 	with mix_tab:
 		col1, col2 = st.columns(2)

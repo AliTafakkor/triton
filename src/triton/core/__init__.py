@@ -13,6 +13,13 @@ from triton.core.io import (
     SUPPORTED_EXTS,
 )
 from triton.core.conversion import to_mono, to_stereo, resample, requantize
+from triton.core.spectrogram import (
+    SpectrogramResult,
+    compute_spectrogram,
+    load_spectrogram,
+    normalize_spectrogram_settings,
+    save_spectrogram,
+)
 from triton.core.project import (
     Project,
     PROJECT_CONFIG_NAME,
@@ -50,6 +57,11 @@ __all__ = [
     "to_stereo",
     "resample",
     "requantize",
+    "SpectrogramResult",
+    "compute_spectrogram",
+    "load_spectrogram",
+    "normalize_spectrogram_settings",
+    "save_spectrogram",
     "Project",
     "PROJECT_CONFIG_NAME",
     "SUPPORTED_AUDIO_SUFFIXES",
