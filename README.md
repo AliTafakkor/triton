@@ -159,4 +159,4 @@ Artifacts:
 - `<file>.spectrogram.npz`
 - `<file>.spectrogram.npz.json` (sidecar provenance)
 
-The "Show Spectrogram" UI action displays the precomputed artifact rather than recomputing every render.
+The `Spec` action in the Import list opens the precomputed artifact in the right-side spectrogram panel rather than recomputing every render.

@@ -10,9 +10,11 @@ Triton includes a Streamlit GUI for project-oriented workflows.
 
 When the app opens, you start from a project launcher:
 
-- **Create**: create a new project with canonical audio settings (sample rate and channel mode)
+- **Recent** (default): quickly reopen recently used projects
 - **Open**: open an existing project directory from anywhere on disk
-- **Recent**: quickly reopen recently used projects
+- **Create**: create a new project with canonical audio settings (sample rate and channel mode)
+
+When creating a project, you can also define spectrogram defaults from the UI (type and parameters). Those values are persisted into `triton.toml` under `[spectrogram]`.
 
 ## Project Structure
 
@@ -30,13 +32,13 @@ Each project stores config and data inside its own directory:
 
 ## Import Tab
 
-The Import tab is the project entry point for source files.
+The Import tab is the default project workspace entry point for source files.
 
 - import one or more audio files into project raw storage (`data/raw`)
-- view files as cards with metadata
+- view files in a compact list with metadata
 - play audio inline per file
 - rename or remove files
-- open a precomputed spectrogram per file
+- open a precomputed spectrogram per file in the right-side spectrogram panel
 
 Imported files automatically trigger spectrogram computation using project defaults from `triton.toml` (`[spectrogram]` section).
 
@@ -45,7 +47,7 @@ Spectrogram artifacts are stored next to source files:
 - `example.wav` -> `example.wav.spectrogram.npz`
 - sidecar metadata: `example.wav.spectrogram.npz.json`
 
-The spectrogram button in the UI displays this precomputed artifact.
+The `Spec` button selects the file and displays this precomputed artifact in the right panel.
 
 ## Mix Tab
 
@@ -59,7 +61,7 @@ Inputs are normalized in-session to project audio settings before mixing.
 
 ## Pipelines Tab
 
-The Pipelines tab is the default workspace view for project processing.
+The Pipelines tab is the project processing workspace.
 
 - select an existing pipeline
 - run it on one or more project files

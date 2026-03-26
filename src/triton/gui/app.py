@@ -79,6 +79,54 @@ def _create_project(project_dir: Path, sample_rate: int, channel_mode: ChannelMo
 	return project
 
 
+def _collect_spectrogram_settings(prefix: str) -> dict[str, object]:
+	type_key = f"{prefix}_spec_type"
+	n_fft_key = f"{prefix}_spec_n_fft"
+	hop_key = f"{prefix}_spec_hop_length"
+	win_key = f"{prefix}_spec_win_length"
+	window_key = f"{prefix}_spec_window"
+	n_mels_key = f"{prefix}_spec_n_mels"
+	fmin_key = f"{prefix}_spec_fmin"
+	fmax_key = f"{prefix}_spec_fmax"
+	power_key = f"{prefix}_spec_power"
+
+	spec_type = st.selectbox("Spectrogram type", options=["stft", "mel", "cqt"], key=type_key)
+	col1, col2, col3 = st.columns(3)
+	n_fft = col1.number_input("n_fft", min_value=128, max_value=8192, value=1024, step=128, key=n_fft_key)
+	hop_length = col2.number_input("hop_length", min_value=32, max_value=4096, value=256, step=32, key=hop_key)
+	win_length = col3.number_input("win_length", min_value=128, max_value=8192, value=1024, step=128, key=win_key)
+
+	window = st.selectbox("Window", options=["hann", "hamming", "blackman"], key=window_key)
+
+	n_mels = 128
+	fmin = 32.7
+	fmax = 8000.0
+	power = 2.0
+
+	if spec_type == "mel":
+		m_col1, m_col2, m_col3 = st.columns(3)
+		n_mels = int(m_col1.number_input("n_mels", min_value=16, max_value=512, value=128, step=8, key=n_mels_key))
+		fmin = float(m_col2.number_input("fmin (Hz)", min_value=0.0, max_value=20000.0, value=32.7, step=1.0, key=fmin_key))
+		fmax = float(m_col3.number_input("fmax (Hz)", min_value=100.0, max_value=48000.0, value=8000.0, step=10.0, key=fmax_key))
+		power = float(st.number_input("power", min_value=1.0, max_value=4.0, value=2.0, step=0.1, key=power_key))
+	elif spec_type == "cqt":
+		c_col1, c_col2 = st.columns(2)
+		fmin = float(c_col1.number_input("fmin (Hz)", min_value=1.0, max_value=20000.0, value=32.7, step=1.0, key=fmin_key))
+		power = float(c_col2.number_input("power", min_value=1.0, max_value=4.0, value=2.0, step=0.1, key=power_key))
+
+	return {
+		"type": str(spec_type),
+		"n_fft": int(n_fft),
+		"hop_length": int(hop_length),
+		"win_length": int(win_length),
+		"window": str(window),
+		"n_mels": int(n_mels),
+		"fmin": float(fmin),
+		"fmax": float(fmax),
+		"power": float(power),
+	}
+
+
 def _clear_active_project() -> None:
 	st.session_state.pop("active_project", None)
 
@@ -417,7 +465,26 @@ def _render_project_launcher() -> None:
 		"Pick an existing project anywhere on disk or create a new one with the canonical audio settings you want Triton to enforce."
 	)
 
-	create_tab, open_tab, recent_tab = st.tabs(["Create", "Open", "Recent"])
+	recent_tab, open_tab, create_tab = st.tabs(["Recent", "Open", "Create"])
+
+	with recent_tab:
+		recent_projects = load_recent_projects()
+		if not recent_projects:
+			st.info("No recent projects yet.")
+		else:
+			for index, project in enumerate(recent_projects):
+				col1, col2 = st.columns([5, 1])
+				with col1:
+					st.markdown(f"#### {project['name']}")
+					st.caption(project["path"])
+				with col2:
+					if st.button("Open", key=f"recent_project_{index}"):
+						try:
+							_set_active_project(Path(project["path"]).expanduser())
+						except Exception as exc:
+							st.error(f"Could not open project: {exc}")
+						else:
+							st.rerun()
 
 	with create_tab:
 		with st.form("create_project_form"):
@@ -425,6 +492,8 @@ def _render_project_launcher() -> None:
 			project_root = st.text_input("Project folder", value=str(Path.home() / "Projects" / "triton" / "my-project"))
 			sample_rate = st.selectbox("Sample rate", options=[8000, 16000, 22050, 24000, 32000, 44100, 48000], index=1, key="create_sr")
 			channel_mode = st.radio("Channel mode", options=["mono", "stereo"], horizontal=True, key="create_channels")
+			with st.expander("Spectrogram defaults", expanded=False):
+				spectrogram_settings = _collect_spectrogram_settings("create")
 			create_submitted = st.form_submit_button("Create project", type="primary")
 
 		if create_submitted:
@@ -433,7 +502,14 @@ def _render_project_launcher() -> None:
 				project_dir = project_dir.parent / project_name.strip()
 
 			try:
-				project = _create_project(project_dir, sample_rate=sample_rate, channel_mode=channel_mode)
+				project = create_project(
+					project_dir,
+					sample_rate=sample_rate,
+					channel_mode=channel_mode,
+					spectrogram_settings=spectrogram_settings,
+				)
+				st.session_state["active_project"] = project
+				register_recent_project(project_dir, project.name)
 			except Exception as exc:
 				st.error(f"Could not create project: {exc}")
 			else:
@@ -454,25 +530,6 @@ def _render_project_launcher() -> None:
 			else:
 				st.success(f"Opened {project_dir.name}")
 				st.rerun()
-
-	with recent_tab:
-		recent_projects = load_recent_projects()
-		if not recent_projects:
-			st.info("No recent projects yet.")
-		else:
-			for index, project in enumerate(recent_projects):
-				col1, col2 = st.columns([5, 1])
-				with col1:
-					st.markdown(f"#### {project['name']}")
-					st.caption(project["path"])
-				with col2:
-					if st.button("Open", key=f"recent_project_{index}"):
-						try:
-							_set_active_project(Path(project["path"]).expanduser())
-						except Exception as exc:
-							st.error(f"Could not open project: {exc}")
-						else:
-							st.rerun()
 
 
 def _render_file_library(project: Project, project_files: list[Path]) -> None:
@@ -514,56 +571,104 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 		st.info("No files have been imported to this project yet.")
 		return
 
+	search_col, sort_col = st.columns([3, 2])
+	search_text = search_col.text_input("Search files", value="", placeholder="Type a file name...")
+	sort_mode = sort_col.selectbox("Sort", options=["name", "size_desc", "size_asc"], format_func=lambda value: {
+		"name": "Name (A-Z)",
+		"size_desc": "Size (largest first)",
+		"size_asc": "Size (smallest first)",
+	}[value])
+
+	visible_files = [path for path in project_files if search_text.strip().lower() in path.name.lower()]
+	if sort_mode == "size_desc":
+		visible_files = sorted(visible_files, key=lambda path: path.stat().st_size, reverse=True)
+	elif sort_mode == "size_asc":
+		visible_files = sorted(visible_files, key=lambda path: path.stat().st_size)
+
+	if not visible_files:
+		st.info("No files match your search.")
+		return
+
 	selected_spectrogram = st.session_state.get("selected_spectrogram_file")
+	selected_count = 0
 
-	for index, file_path in enumerate(project_files):
-		spec_path = _spectrogram_path(file_path)
-		with st.container(border=True):
-			head_col, action_col = st.columns([3, 2])
-			with head_col:
-				st.markdown(f"#### {file_path.name}")
-				st.caption(f"{_format_file_size(file_path.stat().st_size)} | {file_path.suffix.lower()}")
-				st.audio(str(file_path), format="audio/wav")
+	st.markdown("### Imported Files")
+	list_col, panel_col = st.columns([1.9, 1.1], gap="large")
 
-			with action_col:
-				if st.button("Show Spectrogram", key=f"show_spectrogram_{index}"):
-					if not spec_path.exists():
-						try:
-							_generate_file_spectrogram(file_path, project)
-						except Exception as exc:
-							st.error(f"Could not generate spectrogram for {file_path.name}: {exc}")
-							continue
-					st.session_state["selected_spectrogram_file"] = str(file_path)
-					selected_spectrogram = str(file_path)
-
-				with st.form(f"rename_file_{index}"):
-					new_name = st.text_input("Rename file", value=file_path.name, key=f"rename_input_{index}")
-					rename_submitted = st.form_submit_button("Rename")
-					if rename_submitted:
+	with list_col:
+		for index, file_path in enumerate(visible_files):
+			spec_path = _spectrogram_path(file_path)
+			check_key = f"import_checked_{_pipeline_key(str(file_path))}"
+			with st.container(border=True):
+				line1_check_col, line1_name_col, line1_player_col, line1_buttons_col = st.columns([0.8, 3.0, 2.8, 3.4])
+				with line1_check_col:
+					checked = st.checkbox("", key=check_key, label_visibility="collapsed")
+					if checked:
+						selected_count += 1
+				with line1_name_col:
+					new_name = st.text_input(
+						"",
+						value=file_path.name,
+						key=f"rename_input_{index}",
+						label_visibility="collapsed",
+					)
+				with line1_player_col:
+					st.audio(str(file_path), format="audio/wav")
+				with line1_buttons_col:
+					spect_col, rename_col, remove_col = st.columns(3)
+					if spect_col.button("Spec", key=f"list_spec_{index}"):
+						if not spec_path.exists():
+							try:
+								_generate_file_spectrogram(file_path, project)
+							except Exception as exc:
+								st.error(f"Could not generate spectrogram for {file_path.name}: {exc}")
+							else:
+								st.session_state["selected_spectrogram_file"] = str(file_path)
+								st.rerun()
+						else:
+							st.session_state["selected_spectrogram_file"] = str(file_path)
+							st.rerun()
+					if rename_col.button("Rename", key=f"rename_btn_{index}"):
 						try:
 							renamed = _rename_project_file(file_path, new_name)
 						except Exception as exc:
 							st.error(f"Could not rename {file_path.name}: {exc}")
 						else:
 							if spec_path.exists():
-								spec_target = _spectrogram_path(renamed)
-								spec_path.rename(spec_target)
-							st.success(f"Renamed to {new_name}")
+								_spectrogram_path(file_path).rename(_spectrogram_path(renamed))
+							if st.session_state.get("selected_spectrogram_file") == str(file_path):
+								st.session_state["selected_spectrogram_file"] = str(renamed)
 							st.rerun()
+					if remove_col.button("Remove", key=f"remove_file_{index}"):
+						_delete_project_file(file_path)
+						if spec_path.exists():
+							spec_path.unlink()
+						if st.session_state.get("selected_spectrogram_file") == str(file_path):
+							st.session_state.pop("selected_spectrogram_file", None)
+						st.session_state.pop(check_key, None)
+						st.rerun()
 
-				if st.button("Remove", key=f"remove_file_{index}"):
-					_delete_project_file(file_path)
-					if spec_path.exists():
-						spec_path.unlink()
-					if selected_spectrogram == str(file_path):
-						st.session_state.pop("selected_spectrogram_file", None)
-					st.rerun()
+				line2_path_col, line2_details_col = st.columns([7, 3])
+				with line2_path_col:
+					st.caption(str(file_path))
+				with line2_details_col:
+					st.caption(f"{_format_file_size(file_path.stat().st_size)} | {file_path.suffix.lower()}")
 
-			if selected_spectrogram == str(file_path):
+	with panel_col:
+		st.markdown("### Spectrogram")
+		selected_path = next((path for path in project_files if str(path) == str(selected_spectrogram)), None)
+		if selected_path is None:
+			st.caption("Click Spec on a file to open its spectrogram here.")
+		else:
+			spec_path = _spectrogram_path(selected_path)
+			st.caption(selected_path.name)
+			if not spec_path.exists():
+				st.warning("No spectrogram found for this file. Click Spec again to generate it.")
+			else:
 				try:
 					result, _ = load_spectrogram(spec_path)
 				except Exception as exc:
-					st.error(f"Could not load spectrogram for {file_path.name}: {exc}")
+					st.error(f"Could not load spectrogram for {selected_path.name}: {exc}")
 				else:
 					values = result.values
 					min_val = float(np.min(values))
@@ -574,6 +679,8 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 						norm = np.zeros_like(values)
 					image = np.flipud((norm * 255.0).astype(np.uint8))
 					st.image(image, caption=f"{result.kind.upper()} spectrogram")
+
+	st.caption(f"Selected in list: {selected_count}")
 
 
 def _pipeline_key(name: str) -> str:
@@ -1061,10 +1168,7 @@ def _render_project_workspace(project: Project) -> None:
 			_clear_active_project()
 			st.rerun()
 
-	pipelines_tab, import_tab, mix_tab, roadmap_tab = st.tabs(["Pipelines", "Import", "Mix", "Roadmap"])
-
-	with pipelines_tab:
-		_render_pipelines_tab(project, project_files)
+	import_tab, pipelines_tab, mix_tab, roadmap_tab = st.tabs(["Import", "Pipelines", "Mix", "Roadmap"])
 
 	with import_tab:
 		metric_col1, metric_col2, metric_col3 = st.columns(3)
@@ -1081,6 +1185,9 @@ def _render_project_workspace(project: Project) -> None:
 		)
 
 		_render_file_library(project, project_files)
+
+	with pipelines_tab:
+		_render_pipelines_tab(project, project_files)
 
 	with mix_tab:
 		col1, col2 = st.columns(2)

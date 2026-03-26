@@ -58,10 +58,21 @@ class Project:
 		)
 
 	@classmethod
-	def create(cls, project_dir: Path, sample_rate: int, channel_mode: ChannelMode) -> Project:
+	def create(
+		cls,
+		project_dir: Path,
+		sample_rate: int,
+		channel_mode: ChannelMode,
+		spectrogram_settings: dict[str, object] | None = None,
+	) -> Project:
 		project_dir.mkdir(parents=True, exist_ok=True)
 		initialize_project_tree(project_dir)
-		write_project_config(project_dir, sample_rate=sample_rate, channel_mode=channel_mode)
+		write_project_config(
+			project_dir,
+			sample_rate=sample_rate,
+			channel_mode=channel_mode,
+			spectrogram_settings=spectrogram_settings,
+		)
 		return cls.load(project_dir)
 
 	def register_recent(self) -> None:
@@ -104,13 +115,24 @@ def initialize_project_tree(project_dir: Path) -> None:
 	(project_dir / "metadata").mkdir(parents=True, exist_ok=True)
 
 
-def write_project_config(project_dir: Path, sample_rate: int, channel_mode: ChannelMode) -> None:
+def write_project_config(
+	project_dir: Path,
+	sample_rate: int,
+	channel_mode: ChannelMode,
+	spectrogram_settings: dict[str, object] | None = None,
+) -> None:
+	merged_spectrogram = dict(DEFAULT_SPECTROGRAM_SETTINGS)
+	if spectrogram_settings:
+		for key in DEFAULT_SPECTROGRAM_SETTINGS:
+			if key in spectrogram_settings:
+				merged_spectrogram[key] = spectrogram_settings[key]
+
 	config_text = _serialize_project_config(
 		project_name=project_dir.name,
 		project_root=project_dir,
 		sample_rate=sample_rate,
 		channel_mode=channel_mode,
-		spectrogram_settings=DEFAULT_SPECTROGRAM_SETTINGS,
+		spectrogram_settings=merged_spectrogram,
 		pipelines=[],
 	)
 	project_config_path(project_dir).write_text(config_text, encoding="utf-8")
@@ -207,8 +229,18 @@ def save_project_pipelines(project_dir: Path, pipelines: list[Pipeline]) -> None
 	config_path.write_text(config_text, encoding="utf-8")
 
 
-def create_project(project_dir: Path, sample_rate: int, channel_mode: ChannelMode) -> Project:
-	return Project.create(project_dir, sample_rate=sample_rate, channel_mode=channel_mode)
+def create_project(
+	project_dir: Path,
+	sample_rate: int,
+	channel_mode: ChannelMode,
+	spectrogram_settings: dict[str, object] | None = None,
+) -> Project:
+	return Project.create(
+		project_dir,
+		sample_rate=sample_rate,
+		channel_mode=channel_mode,
+		spectrogram_settings=spectrogram_settings,
+	)
 
 
 def load_recent_projects() -> list[dict[str, str]]:
