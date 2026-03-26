@@ -28,16 +28,24 @@ Each project stores config and data inside its own directory:
   metadata/
 ```
 
-## Overview Tab
+## Import Tab
 
-The Overview tab provides basic file management for project assets:
+The Import tab is the project entry point for source files.
 
-- list stored files
-- add files to the project library
-- rename files
-- remove files
+- import one or more audio files into project raw storage (`data/raw`)
+- view files as cards with metadata
+- play audio inline per file
+- rename or remove files
+- open a precomputed spectrogram per file
 
-Current file operations target the raw storage area (`data/raw`).
+Imported files automatically trigger spectrogram computation using project defaults from `triton.toml` (`[spectrogram]` section).
+
+Spectrogram artifacts are stored next to source files:
+
+- `example.wav` -> `example.wav.spectrogram.npz`
+- sidecar metadata: `example.wav.spectrogram.npz.json`
+
+The spectrogram button in the UI displays this precomputed artifact.
 
 ## Mix Tab
 
@@ -79,6 +87,22 @@ Step sidecars include:
 - ordered action history up to that step
 - step options and sample-rate transitions
 - pipeline name/run identifier
+
+## Project Spectrogram Defaults
+
+Project spectrogram defaults are persisted in `triton.toml`:
+
+- `type` (`stft`, `mel`, `cqt`)
+- `n_fft`
+- `hop_length`
+- `win_length`
+- `window`
+- `n_mels`
+- `fmin`
+- `fmax`
+- `power`
+
+These defaults are used when importing files to precompute spectrograms.
 
 ## Roadmap Tab
 

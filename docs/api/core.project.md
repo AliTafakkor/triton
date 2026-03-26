@@ -37,6 +37,26 @@ Typed pipeline model persisted in `triton.toml`.
 - `load_project_pipelines(project_dir)`
 - `save_project_pipelines(project_dir, pipelines)`
 
+## Spectrogram settings
+
+Project config includes a `[spectrogram]` section with defaults used for import-time spectrogram generation.
+
+### Keys
+
+- `type` (`stft`, `mel`, `cqt`)
+- `n_fft`
+- `hop_length`
+- `win_length`
+- `window`
+- `n_mels`
+- `fmin`
+- `fmax`
+- `power`
+
+### Helper
+
+- `load_project_spectrogram_settings(project_dir)`
+
 ## Lifecycle helpers
 
 - `create_project(project_dir, sample_rate, channel_mode)`

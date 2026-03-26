@@ -141,3 +141,22 @@ Each sidecar captures:
 - generation timestamp and schema version
 
 This makes it possible to trace what file was produced from which source and by what sequence of operations.
+
+## Spectrograms
+
+Triton now supports project-level default spectrogram settings and import-time spectrogram generation.
+
+Project defaults live in `triton.toml` under `[spectrogram]`:
+
+- `type` (`stft`, `mel`, `cqt`)
+- `n_fft`, `hop_length`, `win_length`, `window`
+- `n_mels`, `fmin`, `fmax`, `power`
+
+When audio is imported in the GUI Import tab, Triton computes and stores a spectrogram artifact per file using those defaults.
+
+Artifacts:
+
+- `<file>.spectrogram.npz`
+- `<file>.spectrogram.npz.json` (sidecar provenance)
+
+The "Show Spectrogram" UI action displays the precomputed artifact rather than recomputing every render.

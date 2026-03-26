@@ -12,13 +12,15 @@ From the GUI dashboard:
 - Open an existing project from anywhere on disk, or
 - Re-open from recent projects.
 
-## 3) Add and manage project files
+## 3) Import and inspect project files
 
-In the **Overview** tab:
+In the **Import** tab:
 
-- Add audio files to the project library
+- Import audio files into project raw storage
 - Rename files
 - Remove files
+- Play files inline
+- View precomputed spectrograms
 
 ## 4) Mix speech with noise in GUI
 
@@ -57,3 +59,4 @@ Requires the `transcribe` feature (see [Install](install.md#optional-features)):
 - Current CLI commands remain path-oriented; project-first CLI commands can be layered on top of the shared core module.
 - Pipeline runs are grouped by run folder, and each step writes to its own step folder under `data/derived/pipelines/...`.
 - Generated artifacts include sidecar provenance JSON files (`<artifact>.<suffix>.json`) to record source and action history.
+- Imported files get spectrogram artifacts generated from project defaults in `triton.toml` (`[spectrogram]`).
