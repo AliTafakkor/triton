@@ -8,7 +8,7 @@ from pathlib import Path
 import typer
 
 from triton.transcribe.whisper import transcribe_file
-from triton.core.io import iter_audio_files
+from triton.core.io import iter_audio_files, write_sidecar
 
 
 transcribe_app = typer.Typer(add_completion=False, help="Transcribe audio locally")
@@ -53,6 +53,23 @@ def transcribe_local(
 		out_path.parent.mkdir(parents=True, exist_ok=True)
 
 		out_path.write_text(result.text, encoding="utf-8")
+		write_sidecar(
+			out_path,
+			source={"path": str(audio_path.resolve())},
+			actions=[
+				{
+					"step": "transcribe_local",
+					"options": {
+						"model": model,
+						"device": device,
+						"compute_type": compute_type,
+						"language": language,
+						"beam_size": beam_size,
+						"vad_filter": vad_filter,
+					},
+				}
+			],
+		)
 		typer.echo(f"Wrote {out_path}")
 
 		if write_json:
@@ -66,4 +83,21 @@ def transcribe_local(
 				],
 			}
 			json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+			write_sidecar(
+				json_path,
+				source={"path": str(audio_path.resolve())},
+				actions=[
+					{
+						"step": "transcribe_local_json",
+						"options": {
+							"model": model,
+							"device": device,
+							"compute_type": compute_type,
+							"language": language,
+							"beam_size": beam_size,
+							"vad_filter": vad_filter,
+						},
+					}
+				],
+			)
 			typer.echo(f"Wrote {json_path}")

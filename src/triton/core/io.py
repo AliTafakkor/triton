@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from datetime import datetime, timezone
+import json
 from pathlib import Path
 
 import librosa
@@ -13,6 +15,50 @@ from triton.core.signal import to_mono_float32
 
 
 SUPPORTED_EXTS = {".wav", ".flac", ".ogg", ".mp3", ".m4a"}
+
+
+def sidecar_path(path: Path) -> Path:
+	"""Return sidecar JSON path for an output file."""
+	return path.with_suffix(path.suffix + ".json")
+
+
+def write_sidecar(
+	path: Path,
+	*,
+	source: dict[str, object] | None = None,
+	actions: list[dict[str, object]] | None = None,
+	extra: dict[str, object] | None = None,
+) -> Path:
+	"""Write provenance sidecar JSON next to a generated file.
+
+	Args:
+		path: Generated file path.
+		source: Source metadata dictionary.
+		actions: Ordered list of applied actions with details.
+		extra: Optional extra metadata.
+
+	Returns:
+		Path to written sidecar JSON.
+	"""
+	meta_path = sidecar_path(path)
+	payload: dict[str, object] = {
+		"triton": {
+			"schema_version": 1,
+			"generated_at": datetime.now(timezone.utc).isoformat(),
+		},
+		"artifact": {
+			"path": str(path.resolve()),
+			"name": path.name,
+			"suffix": path.suffix.lower(),
+		},
+		"source": source or {},
+		"actions": actions or [],
+	}
+	if extra:
+		payload["extra"] = extra
+
+	meta_path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+	return meta_path
 
 
 def is_audio_file(path: Path) -> bool:
@@ -94,16 +140,41 @@ def iter_source_audio(
 			raise TypeError("Source items must be Path or numpy.ndarray.")
 
 
-def save_audio(path: Path, audio: np.ndarray, sr: int) -> None:
+def save_audio(
+	path: Path,
+	audio: np.ndarray,
+	sr: int,
+	*,
+	source: dict[str, object] | None = None,
+	actions: list[dict[str, object]] | None = None,
+	extra: dict[str, object] | None = None,
+) -> None:
 	"""Save an audio file.
 
 	Args:
 		path: Output path.
 		audio: Audio waveform.
 		sr: Sample rate.
+		source: Optional source metadata for sidecar provenance.
+		actions: Optional ordered action history for sidecar provenance.
+		extra: Optional extra metadata for sidecar provenance.
 	"""
 	path.parent.mkdir(parents=True, exist_ok=True)
-	sf.write(path, audio, sr)
+	audio_arr = np.asarray(audio)
+	sf.write(path, audio_arr, sr)
+
+	channels = 1 if audio_arr.ndim == 1 else int(audio_arr.shape[1])
+	artifact_extra = {
+		"audio": {
+			"sample_rate": int(sr),
+			"samples": int(audio_arr.shape[0]),
+			"channels": channels,
+		}
+	}
+	if extra:
+		artifact_extra.update(extra)
+
+	write_sidecar(path, source=source, actions=actions, extra=artifact_extra)
 
 
 def normalize_peak(audio: np.ndarray, target: float = 0.99) -> np.ndarray:

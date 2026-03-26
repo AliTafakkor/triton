@@ -11,6 +11,7 @@ import feedparser
 import requests
 
 from triton.ingest.base import Episode
+from triton.core.io import write_sidecar
 
 
 @dataclass(frozen=True)
@@ -58,6 +59,20 @@ class RssSource:
 				continue
 
 			_download_file(episode.url, out_file)
+			write_sidecar(
+				out_file,
+				source={"url": episode.url, "feed_url": self.feed_url},
+				actions=[
+					{
+						"step": "rss_download",
+						"options": {
+							"title": episode.title,
+							"published": episode.published,
+							"guid": episode.guid,
+						},
+					}
+				],
+			)
 			paths.append(str(out_file))
 
 		return paths

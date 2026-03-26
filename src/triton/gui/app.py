@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
+from uuid import uuid4
 
 import librosa
 import numpy as np
@@ -534,6 +536,15 @@ def _pipeline_output_dir(project: Project, pipeline_name: str) -> Path:
 	return project.path / "data" / "derived" / "pipelines" / key
 
 
+def _pipeline_run_dir(project: Project, pipeline_name: str, run_id: str) -> Path:
+	return _pipeline_output_dir(project, pipeline_name) / f"run_{run_id}"
+
+
+def _new_pipeline_run_id() -> str:
+	timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+	return f"{timestamp}_{uuid4().hex[:8]}"
+
+
 def _ensure_2d(audio: np.ndarray) -> np.ndarray:
 	if audio.ndim == 1:
 		return audio[:, np.newaxis]
@@ -609,20 +620,50 @@ def _apply_pipeline_step(
 	raise ValueError(f"Unsupported pipeline step: {step}")
 
 
-def _run_pipeline_on_file(file_path: Path, project: Project, pipeline: Pipeline) -> Path:
+def _run_pipeline_on_file(file_path: Path, project: Project, pipeline: Pipeline, run_dir: Path) -> Path:
 	audio, sr = load_audio(file_path, sr=None, mono=False)
 	processed = _to_sample_major(audio)
 	current_sr = int(sr)
+	action_history: list[dict[str, object]] = []
+	final_output: Path | None = None
+
+	if not pipeline.steps:
+		raise ValueError("Pipeline contains no steps.")
 
 	for step_index, step in enumerate(pipeline.steps):
 		step_options = pipeline.step_options.get(str(step_index), pipeline.step_options.get(step, {}))
+		input_sr = current_sr
 		processed, current_sr = _apply_pipeline_step(processed, current_sr, step, project, step_options)
 
-	output_dir = _pipeline_output_dir(project, pipeline.name)
-	output_name = f"{file_path.stem}__{_pipeline_key(pipeline.name)}.wav"
-	output_path = output_dir / output_name
-	save_audio(output_path, processed, current_sr)
-	return output_path
+		step_dir = run_dir / f"step_{step_index + 1:02d}_{_pipeline_key(step) or 'step'}"
+		output_path = step_dir / f"{file_path.stem}.wav"
+		action_history.append(
+			{
+				"step_index": step_index + 1,
+				"step": step,
+				"options": step_options,
+				"input_sample_rate": int(input_sr),
+				"output_sample_rate": int(current_sr),
+			}
+		)
+		save_audio(
+			output_path,
+			processed,
+			current_sr,
+			source={"path": str(file_path.resolve())},
+			actions=list(action_history),
+			extra={
+				"pipeline": {
+					"name": pipeline.name,
+					"run_id": run_dir.name,
+				},
+			},
+		)
+		final_output = output_path
+
+	if final_output is None:
+		raise RuntimeError("Pipeline did not produce an output file.")
+	return final_output
 
 
 def _save_pipelines(project: Project, pipelines: list[Pipeline]) -> None:
@@ -836,11 +877,13 @@ def _render_pipelines_tab(project: Project, project_files: list[Path]) -> None:
 					selected_paths = [path for path in project_files if path.name in set(run_files)]
 					successes: list[Path] = []
 					errors: list[str] = []
+					run_id = _new_pipeline_run_id()
+					run_dir = _pipeline_run_dir(project, selected_pipeline.name, run_id)
 
 					with st.spinner(f"Running {selected_pipeline.name} on {len(selected_paths)} file(s)..."):
 						for file_path in selected_paths:
 							try:
-								output_path = _run_pipeline_on_file(file_path, project, selected_pipeline)
+								output_path = _run_pipeline_on_file(file_path, project, selected_pipeline, run_dir)
 							except Exception as exc:
 								errors.append(f"{file_path.name}: {exc}")
 							else:
@@ -848,6 +891,7 @@ def _render_pipelines_tab(project: Project, project_files: list[Path]) -> None:
 
 					if successes:
 						st.success(f"Processed {len(successes)} file(s).")
+						st.caption(f"Run output folder: {run_dir}")
 						for output in successes:
 							st.caption(str(output))
 					if errors:
