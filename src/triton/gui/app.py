@@ -20,15 +20,18 @@ from triton.core.project import (
 	add_project_file,
 	create_project,
 	delete_project_file,
+	log_project_event,
 	list_project_files,
 	load_project_config,
 	load_project_pipelines,
+	read_project_log,
 	load_project_spectrogram_settings,
 	load_recent_projects,
 	project_raw_dir,
 	rename_project_file,
 	register_recent_project,
 	save_project_pipelines,
+	update_project_spectrogram_settings,
 )
 from triton.core.io import load_audio, normalize_peak, save_audio, write_sidecar
 from triton.core.conversion import requantize
@@ -69,6 +72,7 @@ def _set_active_project(project_dir: Path) -> Project:
 	project = load_project_config(project_dir)
 	st.session_state["active_project"] = project
 	register_recent_project(project_dir, project.name)
+	log_project_event(project_dir, "project_opened_gui", {"project_name": project.name})
 	return project
 
 
@@ -79,7 +83,8 @@ def _create_project(project_dir: Path, sample_rate: int, channel_mode: ChannelMo
 	return project
 
 
-def _collect_spectrogram_settings(prefix: str) -> dict[str, object]:
+def _collect_spectrogram_settings(prefix: str, defaults: dict[str, object] | None = None) -> dict[str, object]:
+	base = defaults or {}
 	type_key = f"{prefix}_spec_type"
 	n_fft_key = f"{prefix}_spec_n_fft"
 	hop_key = f"{prefix}_spec_hop_length"
@@ -90,29 +95,42 @@ def _collect_spectrogram_settings(prefix: str) -> dict[str, object]:
 	fmax_key = f"{prefix}_spec_fmax"
 	power_key = f"{prefix}_spec_power"
 
-	spec_type = st.selectbox("Spectrogram type", options=["stft", "mel", "cqt"], key=type_key)
+	default_type = str(base.get("type", "stft"))
+	if default_type not in {"stft", "mel", "cqt"}:
+		default_type = "stft"
+
+	spec_type = st.selectbox(
+		"Spectrogram type",
+		options=["stft", "mel", "cqt"],
+		index=["stft", "mel", "cqt"].index(default_type),
+		key=type_key,
+	)
 	col1, col2, col3 = st.columns(3)
-	n_fft = col1.number_input("n_fft", min_value=128, max_value=8192, value=1024, step=128, key=n_fft_key)
-	hop_length = col2.number_input("hop_length", min_value=32, max_value=4096, value=256, step=32, key=hop_key)
-	win_length = col3.number_input("win_length", min_value=128, max_value=8192, value=1024, step=128, key=win_key)
+	n_fft = col1.number_input("n_fft", min_value=128, max_value=8192, value=int(base.get("n_fft", 1024)), step=128, key=n_fft_key)
+	hop_length = col2.number_input("hop_length", min_value=32, max_value=4096, value=int(base.get("hop_length", 256)), step=32, key=hop_key)
+	win_length = col3.number_input("win_length", min_value=128, max_value=8192, value=int(base.get("win_length", 1024)), step=128, key=win_key)
 
-	window = st.selectbox("Window", options=["hann", "hamming", "blackman"], key=window_key)
+	default_window = str(base.get("window", "hann"))
+	window_options = ["hann", "hamming", "blackman"]
+	if default_window not in window_options:
+		default_window = "hann"
+	window = st.selectbox("Window", options=window_options, index=window_options.index(default_window), key=window_key)
 
-	n_mels = 128
-	fmin = 32.7
-	fmax = 8000.0
-	power = 2.0
+	n_mels = int(base.get("n_mels", 128))
+	fmin = float(base.get("fmin", 32.7))
+	fmax = float(base.get("fmax", 8000.0))
+	power = float(base.get("power", 2.0))
 
 	if spec_type == "mel":
 		m_col1, m_col2, m_col3 = st.columns(3)
-		n_mels = int(m_col1.number_input("n_mels", min_value=16, max_value=512, value=128, step=8, key=n_mels_key))
-		fmin = float(m_col2.number_input("fmin (Hz)", min_value=0.0, max_value=20000.0, value=32.7, step=1.0, key=fmin_key))
-		fmax = float(m_col3.number_input("fmax (Hz)", min_value=100.0, max_value=48000.0, value=8000.0, step=10.0, key=fmax_key))
-		power = float(st.number_input("power", min_value=1.0, max_value=4.0, value=2.0, step=0.1, key=power_key))
+		n_mels = int(m_col1.number_input("n_mels", min_value=16, max_value=512, value=n_mels, step=8, key=n_mels_key))
+		fmin = float(m_col2.number_input("fmin (Hz)", min_value=0.0, max_value=20000.0, value=fmin, step=1.0, key=fmin_key))
+		fmax = float(m_col3.number_input("fmax (Hz)", min_value=100.0, max_value=48000.0, value=fmax, step=10.0, key=fmax_key))
+		power = float(st.number_input("power", min_value=1.0, max_value=4.0, value=power, step=0.1, key=power_key))
 	elif spec_type == "cqt":
 		c_col1, c_col2 = st.columns(2)
-		fmin = float(c_col1.number_input("fmin (Hz)", min_value=1.0, max_value=20000.0, value=32.7, step=1.0, key=fmin_key))
-		power = float(c_col2.number_input("power", min_value=1.0, max_value=4.0, value=2.0, step=0.1, key=power_key))
+		fmin = float(c_col1.number_input("fmin (Hz)", min_value=1.0, max_value=20000.0, value=max(fmin, 1.0), step=1.0, key=fmin_key))
+		power = float(c_col2.number_input("power", min_value=1.0, max_value=4.0, value=power, step=0.1, key=power_key))
 
 	return {
 		"type": str(spec_type),
@@ -172,7 +190,33 @@ def _save_uploaded_project_files(project: Project, uploaded_files: list[object])
 		saved_paths.append(path)
 		_generate_file_spectrogram(path, project)
 
+	if saved_paths:
+		log_project_event(
+			project.path,
+			"files_imported_batch",
+			{"count": len(saved_paths), "files": [path.name for path in saved_paths]},
+		)
+
 	return saved_paths
+
+
+def _regenerate_all_project_spectrograms(project: Project, project_files: list[Path]) -> tuple[int, list[str]]:
+	updated = 0
+	errors: list[str] = []
+	for file_path in project_files:
+		try:
+			_generate_file_spectrogram(file_path, project)
+		except Exception as exc:
+			errors.append(f"{file_path.name}: {exc}")
+		else:
+			updated += 1
+
+	log_project_event(
+		project.path,
+		"spectrogram_regenerated_all",
+		{"updated_files": updated, "failed_files": len(errors)},
+	)
+	return updated, errors
 
 
 def _delete_project_file(file_path: Path) -> None:
@@ -1052,6 +1096,17 @@ def _render_pipelines_tab(project: Project, project_files: list[Path]) -> None:
 						st.caption(f"Run output folder: {run_dir}")
 						for output in successes:
 							st.caption(str(output))
+						log_project_event(
+							project.path,
+							"pipeline_run_completed",
+							{
+								"pipeline": selected_pipeline.name,
+								"run_id": run_id,
+								"requested_files": len(selected_paths),
+								"succeeded": len(successes),
+								"failed": len(errors),
+							},
+						)
 					if errors:
 						for error in errors:
 							st.error(error)
@@ -1164,6 +1219,61 @@ def _render_project_workspace(project: Project) -> None:
 		st.metric("Sample rate", f"{target_sr} Hz")
 		st.metric("Channels", channel_mode)
 		st.metric("Stored files", str(len(project_files)))
+
+		current_spec = load_project_spectrogram_settings(project.path)
+		sidebar_prefix = f"sidebar_{_pipeline_key(str(project.path))}"
+		with st.expander("Spectrogram defaults", expanded=False):
+			edited_spec = _collect_spectrogram_settings(sidebar_prefix, defaults=current_spec)
+			if st.button("Update spectrogram defaults", key=f"update_spec_{sidebar_prefix}"):
+				if edited_spec == current_spec:
+					st.info("No changes detected.")
+				else:
+					st.session_state["pending_spectrogram_update"] = {
+						"project": str(project.path.resolve()),
+						"settings": edited_spec,
+					}
+
+		pending_update = st.session_state.get("pending_spectrogram_update")
+		if isinstance(pending_update, dict) and pending_update.get("project") == str(project.path.resolve()):
+			st.warning(
+				"Spectrogram settings changed. All imported files must be re-generated with the new settings."
+			)
+			confirm_col, cancel_col = st.columns(2)
+			if confirm_col.button("Accept + Update", key=f"confirm_spec_update_{sidebar_prefix}", type="primary"):
+				with st.spinner("Updating spectrogram settings and regenerating files..."):
+					new_settings = pending_update.get("settings", current_spec)
+					update_project_spectrogram_settings(project.path, dict(new_settings))
+					updated, errors = _regenerate_all_project_spectrograms(project, project_files)
+
+				log_project_event(
+					project.path,
+					"spectrogram_update_accepted",
+					{"updated_files": int(updated), "failed_files": len(errors)},
+				)
+				st.session_state.pop("pending_spectrogram_update", None)
+				if errors:
+					st.error(f"Updated {updated} file(s), {len(errors)} failed.")
+					for item in errors:
+						st.caption(item)
+				else:
+					st.success(f"Updated settings and regenerated spectrograms for {updated} file(s).")
+				st.rerun()
+
+			if cancel_col.button("Cancel", key=f"cancel_spec_update_{sidebar_prefix}"):
+				log_project_event(project.path, "spectrogram_update_cancelled", {})
+				st.session_state.pop("pending_spectrogram_update", None)
+				st.rerun()
+
+		with st.expander("Project activity log", expanded=False):
+			events = read_project_log(project.path, limit=25)
+			if not events:
+				st.caption("No project activity recorded yet.")
+			else:
+				for event in reversed(events):
+					timestamp = str(event.get("timestamp", ""))
+					event_name = str(event.get("event", ""))
+					st.caption(f"{timestamp} | {event_name}")
+
 		if st.button("Close project"):
 			_clear_active_project()
 			st.rerun()
@@ -1235,6 +1345,15 @@ def _render_project_workspace(project: Project) -> None:
 					data=mixed_bytes,
 					file_name="triton_mix.wav",
 					mime="audio/wav",
+				)
+				log_project_event(
+					project.path,
+					"mix_preview_generated",
+					{
+						"snr_db": float(snr_db),
+						"speech_file": speech_meta["filename"],
+						"noise_file": noise_meta["filename"],
+					},
 				)
 
 	with roadmap_tab:

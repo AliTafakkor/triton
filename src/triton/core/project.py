@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 import json
 import re
 import tomllib
@@ -73,6 +74,15 @@ class Project:
 			channel_mode=channel_mode,
 			spectrogram_settings=spectrogram_settings,
 		)
+		log_project_event(
+			project_dir,
+			"project_created",
+			{
+				"sample_rate": int(sample_rate),
+				"channel_mode": str(channel_mode),
+				"spectrogram_settings": load_project_spectrogram_settings(project_dir),
+			},
+		)
 		return cls.load(project_dir)
 
 	def register_recent(self) -> None:
@@ -106,6 +116,10 @@ def project_config_path(project_dir: Path) -> Path:
 
 def project_raw_dir(project_dir: Path) -> Path:
 	return project_dir / "data" / "raw"
+
+
+def project_log_path(project_dir: Path) -> Path:
+	return project_dir / "metadata" / "project.log.jsonl"
 
 
 def initialize_project_tree(project_dir: Path) -> None:
@@ -158,6 +172,70 @@ def load_project_spectrogram_settings(project_dir: Path) -> dict[str, object]:
 			merged[key] = raw[key]
 
 	return merged
+
+
+def update_project_spectrogram_settings(project_dir: Path, spectrogram_settings: dict[str, object]) -> None:
+	config_path = project_config_path(project_dir)
+	if not config_path.exists():
+		raise FileNotFoundError(f"No {PROJECT_CONFIG_NAME} found in {project_dir}.")
+
+	parsed = tomllib.loads(config_path.read_text(encoding="utf-8"))
+	project = parsed.get("project", {})
+	audio = parsed.get("audio", {})
+	pipelines = load_project_pipelines(project_dir)
+
+	project_name = str(project.get("name", project_dir.name))
+	sample_rate = int(audio.get("sample_rate", 16000))
+	channel_mode = str(audio.get("channels", "mono"))
+
+	config_text = _serialize_project_config(
+		project_name=project_name,
+		project_root=project_dir,
+		sample_rate=sample_rate,
+		channel_mode=channel_mode,
+		spectrogram_settings=spectrogram_settings,
+		pipelines=pipelines,
+	)
+	config_path.write_text(config_text, encoding="utf-8")
+	log_project_event(
+		project_dir,
+		"spectrogram_settings_updated",
+		{"spectrogram_settings": load_project_spectrogram_settings(project_dir)},
+	)
+
+
+def log_project_event(project_dir: Path, event: str, details: dict[str, object] | None = None) -> None:
+	(project_dir / "metadata").mkdir(parents=True, exist_ok=True)
+	entry = {
+		"timestamp": datetime.now(timezone.utc).isoformat(),
+		"event": str(event),
+		"details": details or {},
+	}
+	with project_log_path(project_dir).open("a", encoding="utf-8") as handle:
+		handle.write(json.dumps(entry, default=str))
+		handle.write("\n")
+
+
+def read_project_log(project_dir: Path, limit: int = 200) -> list[dict[str, object]]:
+	path = project_log_path(project_dir)
+	if not path.exists():
+		return []
+
+	entries: list[dict[str, object]] = []
+	for line in path.read_text(encoding="utf-8").splitlines():
+		line = line.strip()
+		if not line:
+			continue
+		try:
+			parsed = json.loads(line)
+		except json.JSONDecodeError:
+			continue
+		if isinstance(parsed, dict):
+			entries.append(parsed)
+
+	if limit <= 0:
+		return entries
+	return entries[-limit:]
 
 
 def load_project_pipelines(project_dir: Path) -> list[Pipeline]:
@@ -227,6 +305,11 @@ def save_project_pipelines(project_dir: Path, pipelines: list[Pipeline]) -> None
 		pipelines=pipelines,
 	)
 	config_path.write_text(config_text, encoding="utf-8")
+	log_project_event(
+		project_dir,
+		"pipelines_saved",
+		{"count": len(pipelines), "names": [pipeline.name for pipeline in pipelines]},
+	)
 
 
 def create_project(
@@ -281,12 +364,21 @@ def add_project_file(project_dir: Path, filename: str, content: bytes) -> Path:
 	raw_dir.mkdir(parents=True, exist_ok=True)
 	target_path = raw_dir / filename
 	target_path.write_bytes(content)
+	log_project_event(
+		project_dir,
+		"file_imported",
+		{"name": target_path.name, "path": str(target_path.resolve()), "size_bytes": int(target_path.stat().st_size)},
+	)
 	return target_path
 
 
 def delete_project_file(file_path: Path) -> None:
 	if file_path.exists() and file_path.is_file():
+		project_dir = file_path.parents[2] if len(file_path.parents) >= 3 else file_path.parent
+		file_name = file_path.name
+		resolved = str(file_path.resolve())
 		file_path.unlink()
+		log_project_event(project_dir, "file_deleted", {"name": file_name, "path": resolved})
 
 
 def sanitize_filename(name: str) -> str:
@@ -305,7 +397,19 @@ def rename_project_file(file_path: Path, new_name: str) -> Path:
 		raise FileExistsError(f"{clean_name} already exists.")
 	if target_path.suffix.lower() not in SUPPORTED_AUDIO_SUFFIXES:
 		raise ValueError("Renamed files must keep a supported audio extension.")
-	return file_path.rename(target_path)
+	renamed = file_path.rename(target_path)
+	project_dir = renamed.parents[2] if len(renamed.parents) >= 3 else renamed.parent
+	log_project_event(
+		project_dir,
+		"file_renamed",
+		{
+			"old_name": file_path.name,
+			"new_name": renamed.name,
+			"old_path": str(file_path.resolve()),
+			"new_path": str(renamed.resolve()),
+		},
+	)
+	return renamed
 
 
 def _toml_string(value: str) -> str:
