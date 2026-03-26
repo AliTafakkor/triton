@@ -13,17 +13,52 @@ import streamlit as st
 from triton.core.mixer import mix_at_snr
 from triton.core.project import (
 	ChannelMode,
+	Pipeline,
 	Project,
 	add_project_file,
 	create_project,
 	delete_project_file,
 	list_project_files,
 	load_project_config,
+	load_project_pipelines,
 	load_recent_projects,
 	project_raw_dir,
 	rename_project_file,
 	register_recent_project,
+	save_project_pipelines,
 )
+from triton.core.io import load_audio, normalize_peak, save_audio
+from triton.core.conversion import requantize
+from triton.degrade.vocoder import noise_vocode
+
+
+PIPELINE_ACTIONS: dict[str, str] = {
+	"normalize": "Peak normalize",
+	"resample_project": "Resample to project sample rate",
+	"to_mono": "Convert to mono",
+	"to_stereo": "Convert to stereo",
+	"requantize_16": "Requantize to 16-bit",
+	"vocode_noise": "Noise vocoder degradation",
+}
+
+PIPELINE_STEP_ORDER = list(PIPELINE_ACTIONS.keys())
+PIPELINE_DEFAULT_STEP = "normalize"
+
+
+def _pipeline_action_label(action: str) -> str:
+	return PIPELINE_ACTIONS.get(action, action)
+
+
+def _default_step_options(step: str, project_sr: int) -> dict[str, object]:
+	if step == "normalize":
+		return {"target_peak": 0.99}
+	if step == "resample_project":
+		return {"target_mode": "project", "custom_sr": int(project_sr)}
+	if step == "requantize_16":
+		return {"bit_depth": 16}
+	if step == "vocode_noise":
+		return {"n_bands": 8, "vocoder_type": "noise", "envelope_cutoff": 160.0}
+	return {}
 
 
 def _set_active_project(project_dir: Path) -> Project:
@@ -150,6 +185,37 @@ def _render_styles() -> None:
 			--accent-soft: #ffd6a0;
 			--ink: #ebf6f7;
 			--muted: #b7d0d4;
+			--hero-start: rgba(4, 27, 39, 0.92);
+			--hero-end: rgba(14, 61, 78, 0.88);
+			--hero-kicker: #ffd6a0;
+			--hero-body: #cbe2e5;
+			--hero-pill-bg: rgba(255, 159, 28, 0.16);
+			--hero-pill-text: #ffe9c7;
+			--card-top-bg: rgba(255, 255, 255, 0.06);
+			--card-subtle-text: #cbe2e5;
+			--metric-start: rgba(9, 40, 55, 0.95);
+			--metric-end: rgba(9, 40, 55, 0.7);
+		}
+
+		html[data-theme="light"], body[data-theme="light"], [data-theme="light"] {
+			--bg-top: #f6efe4;
+			--bg-mid: #f7fbff;
+			--bg-bottom: #e7f1f3;
+			--panel: rgba(255, 255, 255, 0.92);
+			--panel-border: rgba(16, 41, 53, 0.16);
+			--panel-soft: rgba(10, 37, 50, 0.05);
+			--ink: #102935;
+			--muted: #385767;
+			--hero-start: rgba(255, 255, 255, 0.96);
+			--hero-end: rgba(235, 247, 250, 0.98);
+			--hero-kicker: #8f4b00;
+			--hero-body: #26485a;
+			--hero-pill-bg: rgba(255, 159, 28, 0.22);
+			--hero-pill-text: #5f3400;
+			--card-top-bg: rgba(255, 255, 255, 0.9);
+			--card-subtle-text: #2e4f5f;
+			--metric-start: rgba(255, 255, 255, 0.97);
+			--metric-end: rgba(240, 248, 251, 0.97);
 		}
 
 		.stApp {
@@ -167,12 +233,19 @@ def _render_styles() -> None:
 			border-right: 1px solid rgba(143, 205, 206, 0.18);
 		}
 
+		html[data-theme="light"] [data-testid="stSidebar"],
+		body[data-theme="light"] [data-testid="stSidebar"],
+		[data-theme="light"] [data-testid="stSidebar"] {
+			background: rgba(255, 255, 255, 0.94);
+			border-right: 1px solid rgba(16, 41, 53, 0.12);
+		}
+
 		h1, h2, h3, h4, h5, h6, p, label, div, span {
 			color: var(--ink) !important;
 		}
 
 		div[data-testid="stMetric"] {
-			background: linear-gradient(180deg, rgba(9, 40, 55, 0.95), rgba(9, 40, 55, 0.7));
+			background: linear-gradient(180deg, var(--metric-start), var(--metric-end));
 			border: 1px solid var(--panel-border);
 			padding: 14px;
 			border-radius: 18px;
@@ -188,9 +261,76 @@ def _render_styles() -> None:
 			box-shadow: 0 12px 24px rgba(255, 159, 28, 0.28);
 		}
 
+		.stButton > button *, .stDownloadButton > button *, button[kind="primary"] * {
+			color: #08202c !important;
+		}
+
+		html[data-theme="light"] .stButton > button[kind="secondary"],
+		html[data-theme="light"] .stButton > button[kind="tertiary"],
+		html[data-theme="light"] .stDownloadButton > button[kind="secondary"],
+		html[data-theme="light"] .stDownloadButton > button[kind="tertiary"],
+		body[data-theme="light"] .stButton > button[kind="secondary"],
+		body[data-theme="light"] .stButton > button[kind="tertiary"],
+		body[data-theme="light"] .stDownloadButton > button[kind="secondary"],
+		body[data-theme="light"] .stDownloadButton > button[kind="tertiary"],
+		[data-theme="light"] .stButton > button[kind="secondary"],
+		[data-theme="light"] .stButton > button[kind="tertiary"],
+		[data-theme="light"] .stDownloadButton > button[kind="secondary"],
+		[data-theme="light"] .stDownloadButton > button[kind="tertiary"] {
+			color: #102935 !important;
+			border: 1px solid rgba(16, 41, 53, 0.22) !important;
+			background: rgba(255, 255, 255, 0.96) !important;
+		}
+
+		html[data-theme="light"] .stButton > button[kind="secondary"] *,
+		html[data-theme="light"] .stButton > button[kind="tertiary"] *,
+		html[data-theme="light"] .stDownloadButton > button[kind="secondary"] *,
+		html[data-theme="light"] .stDownloadButton > button[kind="tertiary"] *,
+		body[data-theme="light"] .stButton > button[kind="secondary"] *,
+		body[data-theme="light"] .stButton > button[kind="tertiary"] *,
+		body[data-theme="light"] .stDownloadButton > button[kind="secondary"] *,
+		body[data-theme="light"] .stDownloadButton > button[kind="tertiary"] *,
+		[data-theme="light"] .stButton > button[kind="secondary"] *,
+		[data-theme="light"] .stButton > button[kind="tertiary"] *,
+		[data-theme="light"] .stDownloadButton > button[kind="secondary"] *,
+		[data-theme="light"] .stDownloadButton > button[kind="tertiary"] * {
+			color: #102935 !important;
+		}
+
+		@media (prefers-color-scheme: light) {
+			.stButton > button[kind="secondary"],
+			.stButton > button[kind="tertiary"],
+			.stDownloadButton > button[kind="secondary"],
+			.stDownloadButton > button[kind="tertiary"] {
+				color: #102935 !important;
+				border: 1px solid rgba(16, 41, 53, 0.22) !important;
+				background: rgba(255, 255, 255, 0.96) !important;
+			}
+
+			.stButton > button[kind="secondary"] *,
+			.stButton > button[kind="tertiary"] *,
+			.stDownloadButton > button[kind="secondary"] *,
+			.stDownloadButton > button[kind="tertiary"] * {
+				color: #102935 !important;
+			}
+		}
+
 		.stTextInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea {
 			background: rgba(255, 255, 255, 0.06) !important;
 			border-radius: 14px !important;
+		}
+
+		html[data-theme="light"] .stTextInput input,
+		html[data-theme="light"] .stSelectbox div[data-baseweb="select"],
+		html[data-theme="light"] .stTextArea textarea,
+		body[data-theme="light"] .stTextInput input,
+		body[data-theme="light"] .stSelectbox div[data-baseweb="select"],
+		body[data-theme="light"] .stTextArea textarea,
+		[data-theme="light"] .stTextInput input,
+		[data-theme="light"] .stSelectbox div[data-baseweb="select"],
+		[data-theme="light"] .stTextArea textarea {
+			background: rgba(255, 255, 255, 0.92) !important;
+			border: 1px solid rgba(16, 41, 53, 0.18) !important;
 		}
 
 		.stFileUploader, .stAudio, .stForm {
@@ -214,6 +354,13 @@ def _render_styles() -> None:
 		button[data-baseweb="tab"][aria-selected="true"] {
 			background: rgba(255, 159, 28, 0.2);
 		}
+
+		html[data-theme="light"] button[data-baseweb="tab"],
+		body[data-theme="light"] button[data-baseweb="tab"],
+		[data-theme="light"] button[data-baseweb="tab"] {
+			background: rgba(255, 255, 255, 0.85);
+			border: 1px solid rgba(16, 41, 53, 0.14);
+		}
 		</style>
 		""",
 		unsafe_allow_html=True,
@@ -224,11 +371,11 @@ def _hero(project: Project | None) -> None:
 	status = "No active project" if project is None else f"Active project: {project.name}"
 	st.markdown(
 		f"""
-		<div style="padding: 28px; border-radius: 28px; background: linear-gradient(135deg, rgba(4, 27, 39, 0.92), rgba(14, 61, 78, 0.88)); border: 1px solid rgba(143, 205, 206, 0.2); box-shadow: 0 30px 60px rgba(2, 10, 16, 0.24); margin-bottom: 18px;">
-		  <div style="font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: #ffd6a0; margin-bottom: 10px;">Triton workspace</div>
+		<div style="padding: 28px; border-radius: 28px; background: linear-gradient(135deg, var(--hero-start), var(--hero-end)); border: 1px solid var(--panel-border); box-shadow: 0 30px 60px rgba(2, 10, 16, 0.24); margin-bottom: 18px;">
+		  <div style="font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--hero-kicker); margin-bottom: 10px;">Triton workspace</div>
 		  <div style="font-size: 42px; font-weight: 800; line-height: 1.05; margin-bottom: 12px;">Project-shaped audio workflows</div>
-		  <div style="max-width: 760px; color: #cbe2e5; font-size: 17px; line-height: 1.6; margin-bottom: 14px;">Start from a project anywhere on disk, keep its audio rules consistent, and let Triton handle import, storage, and processing inside that boundary.</div>
-		  <div style="display: inline-block; padding: 8px 14px; border-radius: 999px; background: rgba(255, 159, 28, 0.16); color: #ffe9c7; font-size: 13px; font-weight: 700;">{status}</div>
+		  <div style="max-width: 760px; color: var(--hero-body); font-size: 17px; line-height: 1.6; margin-bottom: 14px;">Start from a project anywhere on disk, keep its audio rules consistent, and let Triton handle import, storage, and processing inside that boundary.</div>
+		  <div style="display: inline-block; padding: 8px 14px; border-radius: 999px; background: var(--hero-pill-bg); color: var(--hero-pill-text); font-size: 13px; font-weight: 700;">{status}</div>
 		</div>
 		""",
 		unsafe_allow_html=True,
@@ -325,10 +472,10 @@ def _render_file_library(project_dir: Path, project_files: list[Path]) -> None:
 	with count_col:
 		st.markdown(
 			f"""
-			<div style="height: 100%; min-height: 136px; padding: 18px 20px; border-radius: 22px; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(143, 205, 206, 0.18);">
-			  <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.14em; color: #ffd6a0; margin-bottom: 8px;">Library status</div>
+			<div style="height: 100%; min-height: 136px; padding: 18px 20px; border-radius: 22px; background: var(--card-top-bg); border: 1px solid var(--panel-border);">
+			  <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--hero-kicker); margin-bottom: 8px;">Library status</div>
 			  <div style="font-size: 36px; font-weight: 800; margin-bottom: 6px;">{len(project_files)}</div>
-			  <div style="color: #cbe2e5;">audio file(s) currently stored in this project.</div>
+			  <div style="color: var(--card-subtle-text);">audio file(s) currently stored in this project.</div>
 			</div>
 			""",
 			unsafe_allow_html=True,
@@ -376,6 +523,433 @@ def _render_file_library(project_dir: Path, project_files: list[Path]) -> None:
 				st.rerun()
 
 
+def _pipeline_key(name: str) -> str:
+	return "".join(char if char.isalnum() or char in {"_", "-"} else "_" for char in name.strip().lower())
+
+
+def _pipeline_output_dir(project: Project, pipeline_name: str) -> Path:
+	key = _pipeline_key(pipeline_name)
+	if not key:
+		key = "pipeline"
+	return project.path / "data" / "derived" / "pipelines" / key
+
+
+def _ensure_2d(audio: np.ndarray) -> np.ndarray:
+	if audio.ndim == 1:
+		return audio[:, np.newaxis]
+	return audio
+
+
+def _to_sample_major(audio: np.ndarray) -> np.ndarray:
+	arr = np.asarray(audio, dtype=np.float32)
+	if arr.ndim == 2 and arr.shape[0] <= 8 and arr.shape[1] > arr.shape[0]:
+		return arr.T
+	return arr
+
+
+def _apply_pipeline_step(
+	audio: np.ndarray,
+	sr: int,
+	step: str,
+	project: Project,
+	step_options: dict[str, object] | None = None,
+) -> tuple[np.ndarray, int]:
+	options = step_options or {}
+
+	if step == "normalize":
+		target_peak = float(options.get("target_peak", 0.99))
+		target_peak = min(max(target_peak, 0.01), 1.0)
+		return normalize_peak(audio, target=target_peak), sr
+
+	if step == "resample_project":
+		target_mode = str(options.get("target_mode", "project"))
+		if target_mode == "custom":
+			target_sr = int(options.get("custom_sr", int(project.sample_rate)))
+		else:
+			target_sr = int(project.sample_rate)
+		if target_sr <= 0:
+			raise ValueError("Resample target sample rate must be positive.")
+
+		audio_2d = _ensure_2d(audio)
+		resampled = _resample_audio(audio_2d, source_sr=sr, target_sr=target_sr)
+		if audio.ndim == 1:
+			return resampled[:, 0], target_sr
+		return resampled, target_sr
+
+	if step == "to_mono":
+		audio_2d = _ensure_2d(audio)
+		return _convert_channels(audio_2d, channel_mode="mono"), sr
+
+	if step == "to_stereo":
+		if audio.ndim == 1:
+			input_audio = audio[:, np.newaxis]
+		else:
+			input_audio = audio
+		return _convert_channels(input_audio, channel_mode="stereo"), sr
+
+	if step == "requantize_16":
+		bit_depth = int(options.get("bit_depth", 16))
+		if bit_depth not in {8, 16, 24, 32}:
+			raise ValueError(f"Unsupported bit depth: {bit_depth}")
+		return requantize(audio, bit_depth=bit_depth), sr
+
+	if step == "vocode_noise":
+		n_bands = int(options.get("n_bands", 8))
+		envelope_cutoff = float(options.get("envelope_cutoff", 160.0))
+		vocoder_type = str(options.get("vocoder_type", "noise"))
+		mono = audio if audio.ndim == 1 else np.mean(audio, axis=1, dtype=np.float32)
+		return noise_vocode(
+			mono,
+			sr,
+			n_bands=n_bands,
+			envelope_cutoff=envelope_cutoff,
+			vocoder_type=vocoder_type,
+		), sr
+
+	raise ValueError(f"Unsupported pipeline step: {step}")
+
+
+def _run_pipeline_on_file(file_path: Path, project: Project, pipeline: Pipeline) -> Path:
+	audio, sr = load_audio(file_path, sr=None, mono=False)
+	processed = _to_sample_major(audio)
+	current_sr = int(sr)
+
+	for step_index, step in enumerate(pipeline.steps):
+		step_options = pipeline.step_options.get(str(step_index), pipeline.step_options.get(step, {}))
+		processed, current_sr = _apply_pipeline_step(processed, current_sr, step, project, step_options)
+
+	output_dir = _pipeline_output_dir(project, pipeline.name)
+	output_name = f"{file_path.stem}__{_pipeline_key(pipeline.name)}.wav"
+	output_path = output_dir / output_name
+	save_audio(output_path, processed, current_sr)
+	return output_path
+
+
+def _save_pipelines(project: Project, pipelines: list[Pipeline]) -> None:
+	save_project_pipelines(project.path, pipelines)
+
+
+def _load_pipelines(project: Project) -> list[Pipeline]:
+	return load_project_pipelines(project.path)
+
+
+def _open_pipeline_editor(mode: str, project: Project, pipeline: Pipeline | None = None) -> None:
+	steps = list(pipeline.steps) if pipeline and pipeline.steps else [PIPELINE_DEFAULT_STEP]
+	step_options = pipeline.step_options if pipeline else {}
+
+	st.session_state["pipeline_editor_mode"] = mode
+	st.session_state["pipeline_editor_original_name"] = pipeline.name if pipeline else ""
+	st.session_state["pipeline_editor_name"] = pipeline.name if pipeline else ""
+	st.session_state["pipeline_editor_step_count"] = len(steps)
+
+	for index, action in enumerate(steps):
+		action_key = action if action in PIPELINE_ACTIONS else PIPELINE_DEFAULT_STEP
+		st.session_state[f"pipeline_editor_step_{index}"] = action_key
+
+		defaults = _default_step_options(action_key, int(project.sample_rate))
+		stored_by_index = step_options.get(str(index), {}) if isinstance(step_options.get(str(index), {}), dict) else {}
+		stored_by_action = step_options.get(action_key, {}) if isinstance(step_options.get(action_key, {}), dict) else {}
+		stored = stored_by_index or stored_by_action
+		options = {**defaults, **stored}
+
+		st.session_state[f"pipeline_step_target_peak_{index}"] = float(options.get("target_peak", 0.99))
+		st.session_state[f"pipeline_step_target_mode_{index}"] = str(options.get("target_mode", "project"))
+		st.session_state[f"pipeline_step_custom_sr_{index}"] = int(options.get("custom_sr", int(project.sample_rate)))
+		st.session_state[f"pipeline_step_bit_depth_{index}"] = int(options.get("bit_depth", 16))
+		st.session_state[f"pipeline_step_n_bands_{index}"] = int(options.get("n_bands", 8))
+		st.session_state[f"pipeline_step_vocoder_type_{index}"] = str(options.get("vocoder_type", "noise"))
+		st.session_state[f"pipeline_step_envelope_cutoff_{index}"] = float(options.get("envelope_cutoff", 160.0))
+
+
+def _close_pipeline_editor() -> None:
+	st.session_state.pop("pipeline_editor_mode", None)
+	st.session_state.pop("pipeline_editor_original_name", None)
+
+
+def _delete_pipeline_step(step_index: int) -> None:
+	step_count = int(st.session_state.get("pipeline_editor_step_count", 1))
+	if step_count <= 1 or step_index < 0 or step_index >= step_count:
+		return
+
+	key_prefixes = [
+		"pipeline_editor_step_",
+		"pipeline_step_target_peak_",
+		"pipeline_step_target_mode_",
+		"pipeline_step_custom_sr_",
+		"pipeline_step_bit_depth_",
+		"pipeline_step_n_bands_",
+		"pipeline_step_vocoder_type_",
+		"pipeline_step_envelope_cutoff_",
+	]
+
+	for index in range(step_index, step_count - 1):
+		for prefix in key_prefixes:
+			next_key = f"{prefix}{index + 1}"
+			current_key = f"{prefix}{index}"
+			if next_key in st.session_state:
+				st.session_state[current_key] = st.session_state[next_key]
+			else:
+				st.session_state.pop(current_key, None)
+
+	for prefix in key_prefixes:
+		st.session_state.pop(f"{prefix}{step_count - 1}", None)
+
+	st.session_state["pipeline_editor_step_count"] = step_count - 1
+
+
+def _request_delete_pipeline_step(step_index: int) -> None:
+	st.session_state["pipeline_editor_delete_request"] = int(step_index)
+
+
+def _render_step_options_editor(step: str, index: int, project: Project) -> dict[str, object]:
+	if step == "normalize":
+		target_peak = st.slider(
+			"Target peak",
+			min_value=0.10,
+			max_value=1.0,
+			value=float(st.session_state.get(f"pipeline_step_target_peak_{index}", 0.99)),
+			step=0.01,
+			key=f"pipeline_step_target_peak_{index}",
+		)
+		return {"target_peak": float(target_peak)}
+
+	if step == "resample_project":
+		target_mode = st.selectbox(
+			"Target sample rate",
+			options=["project", "custom"],
+			format_func=lambda value: "Project sample rate" if value == "project" else "Custom sample rate",
+			key=f"pipeline_step_target_mode_{index}",
+		)
+		options: dict[str, object] = {"target_mode": target_mode}
+		if target_mode == "custom":
+			custom_sr = st.number_input(
+				"Custom sample rate (Hz)",
+				min_value=8000,
+				max_value=192000,
+				value=int(st.session_state.get(f"pipeline_step_custom_sr_{index}", int(project.sample_rate))),
+				step=1000,
+				key=f"pipeline_step_custom_sr_{index}",
+			)
+			options["custom_sr"] = int(custom_sr)
+		else:
+			options["custom_sr"] = int(project.sample_rate)
+		return options
+
+	if step == "requantize_16":
+		bit_depth = st.selectbox(
+			"Bit depth",
+			options=[8, 16, 24, 32],
+			key=f"pipeline_step_bit_depth_{index}",
+		)
+		return {"bit_depth": int(bit_depth)}
+
+	if step == "vocode_noise":
+		n_bands = st.slider(
+			"Number of bands",
+			min_value=2,
+			max_value=24,
+			value=int(st.session_state.get(f"pipeline_step_n_bands_{index}", 8)),
+			step=1,
+			key=f"pipeline_step_n_bands_{index}",
+		)
+		vocoder_type = st.selectbox(
+			"Carrier",
+			options=["noise", "sine"],
+			key=f"pipeline_step_vocoder_type_{index}",
+		)
+		envelope_cutoff = st.slider(
+			"Envelope cutoff (Hz)",
+			min_value=20.0,
+			max_value=400.0,
+			value=float(st.session_state.get(f"pipeline_step_envelope_cutoff_{index}", 160.0)),
+			step=5.0,
+			key=f"pipeline_step_envelope_cutoff_{index}",
+		)
+		return {
+			"n_bands": int(n_bands),
+			"vocoder_type": str(vocoder_type),
+			"envelope_cutoff": float(envelope_cutoff),
+		}
+
+	st.caption("No options for this step.")
+	return {}
+
+
+def _render_pipelines_tab(project: Project, project_files: list[Path]) -> None:
+	pipelines = _load_pipelines(project)
+	pipeline_names = [item.name for item in pipelines]
+
+	pending_selected_pipeline = st.session_state.pop("pending_selected_pipeline_name", None)
+	if pending_selected_pipeline is not None:
+		if pending_selected_pipeline == "__clear__":
+			st.session_state.pop("selected_pipeline_name", None)
+		elif pending_selected_pipeline in set(pipeline_names):
+			st.session_state["selected_pipeline_name"] = pending_selected_pipeline
+
+	if pipeline_names and st.session_state.get("selected_pipeline_name") not in set(pipeline_names):
+		st.session_state["selected_pipeline_name"] = pipeline_names[0]
+
+	st.markdown("### Pipelines")
+	st.write("Default view shows your pipeline list. Pick one to run or edit, or create a new pipeline from the right panel.")
+
+	main_col, editor_col = st.columns([1.9, 1.1], gap="large")
+
+	with main_col:
+		action_col1, action_col2 = st.columns(2)
+		if action_col1.button("New pipeline", type="primary"):
+			_open_pipeline_editor("create", project)
+			st.rerun()
+
+		selected_pipeline: Pipeline | None = None
+		if pipeline_names:
+			selected_name = st.radio(
+				"Created pipelines",
+				options=pipeline_names,
+				key="selected_pipeline_name",
+			)
+			selected_pipeline = next((item for item in pipelines if item.name == selected_name), None)
+
+			if action_col2.button("Edit selected"):
+				if selected_pipeline is not None:
+					_open_pipeline_editor("edit", project, selected_pipeline)
+					st.rerun()
+		else:
+			action_col2.button("Edit selected", disabled=True)
+			st.info("No pipelines yet. Click New pipeline to create your first one.")
+
+		if selected_pipeline is not None:
+			st.markdown(f"#### {selected_pipeline.name}")
+			for index, step in enumerate(selected_pipeline.steps, start=1):
+				st.caption(f"{index}. {_pipeline_action_label(step)} ({step})")
+
+			run_files = st.multiselect(
+				"Files to run",
+				options=[path.name for path in project_files],
+				help="Choose one or more project files for this pipeline.",
+			)
+
+			run_col, delete_col = st.columns(2)
+			if run_col.button("Run selected pipeline", type="primary"):
+				if not run_files:
+					st.error("Select at least one file.")
+				else:
+					selected_paths = [path for path in project_files if path.name in set(run_files)]
+					successes: list[Path] = []
+					errors: list[str] = []
+
+					with st.spinner(f"Running {selected_pipeline.name} on {len(selected_paths)} file(s)..."):
+						for file_path in selected_paths:
+							try:
+								output_path = _run_pipeline_on_file(file_path, project, selected_pipeline)
+							except Exception as exc:
+								errors.append(f"{file_path.name}: {exc}")
+							else:
+								successes.append(output_path)
+
+					if successes:
+						st.success(f"Processed {len(successes)} file(s).")
+						for output in successes:
+							st.caption(str(output))
+					if errors:
+						for error in errors:
+							st.error(error)
+
+			if delete_col.button("Delete selected"):
+				remaining = [item for item in pipelines if item.name != selected_pipeline.name]
+				_save_pipelines(project, remaining)
+				if remaining:
+					st.session_state["pending_selected_pipeline_name"] = remaining[0].name
+				else:
+					st.session_state["pending_selected_pipeline_name"] = "__clear__"
+				_close_pipeline_editor()
+				st.rerun()
+
+	with editor_col:
+		st.markdown("### Editor")
+		editor_mode = st.session_state.get("pipeline_editor_mode")
+		if editor_mode not in {"create", "edit"}:
+			st.caption("Choose New pipeline or Edit selected to open the right-side editor.")
+		else:
+			with st.container(border=True):
+				delete_request = st.session_state.pop("pipeline_editor_delete_request", None)
+				if isinstance(delete_request, int):
+					_delete_pipeline_step(delete_request)
+					st.rerun()
+
+				head_col1, head_col2 = st.columns([3, 2])
+				with head_col1:
+					pipeline_name = st.text_input("Pipeline name", key="pipeline_editor_name", placeholder="speech_cleanup")
+				with head_col2:
+					step_count = int(
+						st.number_input(
+							"Number of steps",
+							min_value=1,
+							max_value=12,
+							value=int(st.session_state.get("pipeline_editor_step_count", 1)),
+							step=1,
+							key="pipeline_editor_step_count",
+						)
+					)
+
+				st.caption("Choose an action for each step, then configure options under it.")
+
+				steps: list[str] = []
+				step_options_by_index: dict[str, dict[str, object]] = {}
+
+				for order_index in range(step_count):
+					with st.container(border=True):
+						step_col, delete_col = st.columns([4, 1])
+						with step_col:
+							step = st.selectbox(
+								f"Step {order_index + 1}",
+								options=PIPELINE_STEP_ORDER,
+								format_func=lambda action: f"{_pipeline_action_label(action)} ({action})",
+								key=f"pipeline_editor_step_{order_index}",
+							)
+						with delete_col:
+							st.button(
+								"Delete",
+								key=f"pipeline_editor_delete_step_{order_index}",
+								disabled=step_count <= 1,
+								on_click=_request_delete_pipeline_step,
+								args=(order_index,),
+								use_container_width=True,
+							)
+						steps.append(step)
+						st.caption("Step options")
+						options = _render_step_options_editor(step, order_index, project)
+						if options:
+							step_options_by_index[str(order_index)] = options
+
+				save_col, cancel_col = st.columns(2)
+				if save_col.button("Save pipeline", type="primary"):
+					clean_name = pipeline_name.strip()
+					if not clean_name:
+						st.error("Pipeline name is required.")
+					else:
+						existing_names = {item.name for item in pipelines}
+						original_name = str(st.session_state.get("pipeline_editor_original_name", ""))
+						if editor_mode == "create" and clean_name in existing_names:
+							st.error("A pipeline with this name already exists.")
+						elif editor_mode == "edit" and clean_name != original_name and clean_name in existing_names:
+							st.error("A pipeline with this name already exists.")
+						else:
+							updated = Pipeline(name=clean_name, steps=steps, step_options=step_options_by_index)
+							if editor_mode == "create":
+								pipelines.append(updated)
+							else:
+								pipelines = [updated if item.name == original_name else item for item in pipelines]
+
+							_save_pipelines(project, pipelines)
+							st.session_state["pending_selected_pipeline_name"] = clean_name
+							_close_pipeline_editor()
+							st.rerun()
+
+				if cancel_col.button("Cancel"):
+					_close_pipeline_editor()
+					st.rerun()
+
+
 def _render_project_workspace(project: Project) -> None:
 	target_sr = int(project.sample_rate)
 	channel_mode = str(project.channel_mode)
@@ -392,7 +966,10 @@ def _render_project_workspace(project: Project) -> None:
 			_clear_active_project()
 			st.rerun()
 
-	overview_tab, mix_tab, roadmap_tab = st.tabs(["Overview", "Mix", "Roadmap"])
+	pipelines_tab, overview_tab, mix_tab, roadmap_tab = st.tabs(["Pipelines", "Overview", "Mix", "Roadmap"])
+
+	with pipelines_tab:
+		_render_pipelines_tab(project, project_files)
 
 	with overview_tab:
 		metric_col1, metric_col2, metric_col3 = st.columns(3)

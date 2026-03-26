@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import re
 import tomllib
@@ -71,6 +71,13 @@ class Project:
 		}
 
 
+@dataclass(slots=True)
+class Pipeline:
+	name: str
+	steps: list[str]
+	step_options: dict[str, dict[str, object]] = field(default_factory=dict)
+
+
 def project_config_path(project_dir: Path) -> Path:
 	return project_dir / PROJECT_CONFIG_NAME
 
@@ -87,24 +94,85 @@ def initialize_project_tree(project_dir: Path) -> None:
 
 
 def write_project_config(project_dir: Path, sample_rate: int, channel_mode: ChannelMode) -> None:
-	config_text = (
-		"[project]\n"
-		f'name = "{project_dir.name}"\n'
-		f'root = "{project_dir}"\n\n'
-		"[audio]\n"
-		f"sample_rate = {sample_rate}\n"
-		f'channels = "{channel_mode}"\n\n'
-		"[storage]\n"
-		'raw = "data/raw"\n'
-		'normalized = "data/normalized"\n'
-		'derived = "data/derived"\n'
-		'metadata = "metadata"\n'
+	config_text = _serialize_project_config(
+		project_name=project_dir.name,
+		project_root=project_dir,
+		sample_rate=sample_rate,
+		channel_mode=channel_mode,
+		pipelines=[],
 	)
 	project_config_path(project_dir).write_text(config_text, encoding="utf-8")
 
 
 def load_project_config(project_dir: Path) -> Project:
 	return Project.load(project_dir)
+
+
+def load_project_pipelines(project_dir: Path) -> list[Pipeline]:
+	config_path = project_config_path(project_dir)
+	if not config_path.exists():
+		raise FileNotFoundError(f"No {PROJECT_CONFIG_NAME} found in {project_dir}.")
+
+	parsed = tomllib.loads(config_path.read_text(encoding="utf-8"))
+	pipeline_items = parsed.get("pipeline", [])
+	if isinstance(pipeline_items, dict):
+		pipeline_items = [pipeline_items]
+
+	pipelines: list[Pipeline] = []
+	for item in pipeline_items:
+		name = str(item.get("name", "")).strip()
+		if not name:
+			continue
+		steps_value = item.get("steps", [])
+		if not isinstance(steps_value, list):
+			steps_value = []
+		steps = [str(step).strip() for step in steps_value if str(step).strip()]
+
+		step_options: dict[str, dict[str, object]] = {}
+		raw_step_options_json = item.get("step_options_json")
+		if isinstance(raw_step_options_json, str) and raw_step_options_json.strip():
+			try:
+				decoded = json.loads(raw_step_options_json)
+			except json.JSONDecodeError:
+				decoded = {}
+			if isinstance(decoded, dict):
+				for key, value in decoded.items():
+					if isinstance(value, dict):
+						step_options[str(key)] = {str(k): v for k, v in value.items()}
+
+		# Backward/forward compatibility if options are present as TOML inline table.
+		raw_step_options = item.get("step_options")
+		if isinstance(raw_step_options, dict):
+			for key, value in raw_step_options.items():
+				if isinstance(value, dict):
+					step_options[str(key)] = {str(k): v for k, v in value.items()}
+
+		pipelines.append(Pipeline(name=name, steps=steps, step_options=step_options))
+
+	return pipelines
+
+
+def save_project_pipelines(project_dir: Path, pipelines: list[Pipeline]) -> None:
+	config_path = project_config_path(project_dir)
+	if not config_path.exists():
+		raise FileNotFoundError(f"No {PROJECT_CONFIG_NAME} found in {project_dir}.")
+
+	parsed = tomllib.loads(config_path.read_text(encoding="utf-8"))
+	project = parsed.get("project", {})
+	audio = parsed.get("audio", {})
+
+	project_name = str(project.get("name", project_dir.name))
+	sample_rate = int(audio.get("sample_rate", 16000))
+	channel_mode = str(audio.get("channels", "mono"))
+
+	config_text = _serialize_project_config(
+		project_name=project_name,
+		project_root=project_dir,
+		sample_rate=sample_rate,
+		channel_mode=channel_mode,
+		pipelines=pipelines,
+	)
+	config_path.write_text(config_text, encoding="utf-8")
 
 
 def create_project(project_dir: Path, sample_rate: int, channel_mode: ChannelMode) -> Project:
@@ -174,3 +242,60 @@ def rename_project_file(file_path: Path, new_name: str) -> Path:
 	if target_path.suffix.lower() not in SUPPORTED_AUDIO_SUFFIXES:
 		raise ValueError("Renamed files must keep a supported audio extension.")
 	return file_path.rename(target_path)
+
+
+def _toml_string(value: str) -> str:
+	return json.dumps(value)
+
+
+def _toml_array_of_strings(values: list[str]) -> str:
+	inner = ", ".join(_toml_string(item) for item in values)
+	return f"[{inner}]"
+
+
+def _serialize_project_config(
+	*,
+	project_name: str,
+	project_root: Path,
+	sample_rate: int,
+	channel_mode: str,
+	pipelines: list[Pipeline],
+) -> str:
+	lines = [
+		"[project]",
+		f"name = {_toml_string(project_name)}",
+		f"root = {_toml_string(str(project_root))}",
+		"",
+		"[audio]",
+		f"sample_rate = {sample_rate}",
+		f"channels = {_toml_string(channel_mode)}",
+		"",
+		"[storage]",
+		'raw = "data/raw"',
+		'normalized = "data/normalized"',
+		'derived = "data/derived"',
+		'metadata = "metadata"',
+	]
+
+	for pipeline in pipelines:
+		if not pipeline.name.strip():
+			continue
+		steps = [step for step in pipeline.steps if step.strip()]
+		step_options = {
+			str(step): value
+			for step, value in pipeline.step_options.items()
+			if isinstance(step, str) and isinstance(value, dict)
+		}
+		lines.extend(
+			[
+				"",
+				"[[pipeline]]",
+				f"name = {_toml_string(pipeline.name.strip())}",
+				f"steps = {_toml_array_of_strings(steps)}",
+			]
+		)
+		if step_options:
+			lines.append(f"step_options_json = {_toml_string(json.dumps(step_options, sort_keys=True))}")
+
+	lines.append("")
+	return "\n".join(lines)
