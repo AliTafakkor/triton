@@ -5,6 +5,7 @@ Triton includes a Streamlit GUI for project-oriented workflows.
 ## Run
 
 - `pixi run gui`
+- UI theme is forced to dark mode via project Streamlit config (`.streamlit/config.toml`).
 
 ## Project Dashboard
 
@@ -48,6 +49,18 @@ Spectrogram artifacts are stored next to source files:
 - sidecar metadata: `example.wav.spectrogram.npz.json`
 
 The `Spec` button selects the file and displays this precomputed artifact in the right panel.
+
+Spectrogram viewer behavior:
+
+- rendered as an interactive Plotly heatmap (zoom/pan/scroll)
+- time/frequency axes are shown directly in the chart
+- inferno colormap is used for display
+- large spectrograms are downsampled for responsive interaction (shown in the panel caption)
+
+Accessibility and deprecation cleanup in the Import list:
+
+- hidden labels are non-empty to avoid Streamlit accessibility warnings
+- deprecated `use_container_width` usage has been replaced with `width="stretch"`
 
 ## Mix Tab
 

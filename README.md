@@ -160,3 +160,7 @@ Artifacts:
 - `<file>.spectrogram.npz.json` (sidecar provenance)
 
 The `Spec` action in the Import list opens the precomputed artifact in the right-side spectrogram panel rather than recomputing every render.
+
+The panel uses an interactive Plotly spectrogram (zoom/pan/scroll) with visible time/frequency axes and an inferno colormap. For large files, the displayed grid is downsampled for performance.
+
+The GUI is configured to run in dark mode by default via `.streamlit/config.toml`.
