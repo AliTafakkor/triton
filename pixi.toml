@@ -49,4 +49,5 @@ transcribe = { features = ["dev", "docs", "transcribe"] }
 soundfile = "*"
 torch = "*"
 triton = { path = ".", editable = true }
+praat-parselmouth = ">=0.4.7, <0.5"
 
