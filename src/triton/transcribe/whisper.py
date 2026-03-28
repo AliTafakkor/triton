@@ -34,6 +34,11 @@ def transcribe_file(
 	vad_filter: bool = True,
 ) -> TranscriptResult:
 	"""Transcribe a single audio file using openai-whisper."""
+	import sys
+	if sys.platform == "win32":
+		import torch
+		torch.multiprocessing.set_sharing_strategy("file_system")
+
 	use_device = "cpu" if device == "auto" else device
 	model = whisper.load_model(model_size, device=use_device)
 
