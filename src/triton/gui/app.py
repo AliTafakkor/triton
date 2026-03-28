@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 from triton.gui.styles import APP_CSS
-from triton.gui.project_views import _hero
+from triton.gui.project_views import _hero, _render_project_launcher
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
@@ -295,79 +295,6 @@ def _display_audio_summary(title: str, metadata: dict[str, int | str]) -> None:
 
 def _render_styles() -> None:
 		st.markdown(APP_CSS, unsafe_allow_html=True)
-
-def _render_project_launcher() -> None:
-	st.subheader("Open or create a project")
-	st.write(
-		"Pick an existing project anywhere on disk or create a new one with the canonical audio settings you want Triton to enforce."
-	)
-
-	recent_tab, open_tab, create_tab = st.tabs(["Recent", "Open", "Create"])
-
-	with recent_tab:
-		recent_projects = load_recent_projects()
-		if not recent_projects:
-			st.info("No recent projects yet.")
-		else:
-			for index, project in enumerate(recent_projects):
-				col1, col2 = st.columns([5, 1])
-				with col1:
-					st.markdown(f"#### {project['name']}")
-					st.caption(project["path"])
-				with col2:
-					if st.button("Open", key=f"recent_project_{index}"):
-						try:
-							_set_active_project(Path(project["path"]).expanduser())
-						except Exception as exc:
-							st.error(f"Could not open project: {exc}")
-						else:
-							st.rerun()
-
-	with create_tab:
-		with st.form("create_project_form"):
-			project_name = st.text_input("Project name", value="my-project")
-			project_root = st.text_input("Project folder", value=str(Path.home() / "Projects" / "triton" / "my-project"))
-			sample_rate = st.selectbox("Sample rate", options=[8000, 16000, 22050, 24000, 32000, 44100, 48000], index=1, key="create_sr")
-			channel_mode = st.radio("Channel mode", options=["mono", "stereo"], horizontal=True, key="create_channels")
-			with st.expander("Spectrogram defaults", expanded=False):
-				spectrogram_settings = _collect_spectrogram_settings("create")
-			create_submitted = st.form_submit_button("Create project", type="primary")
-
-		if create_submitted:
-			project_dir = Path(project_root).expanduser()
-			if project_dir.name != project_name and project_name.strip():
-				project_dir = project_dir.parent / project_name.strip()
-
-			try:
-				project = create_project(
-					project_dir,
-					sample_rate=sample_rate,
-					channel_mode=channel_mode,
-					spectrogram_settings=spectrogram_settings,
-				)
-				st.session_state["active_project"] = project
-				register_recent_project(project_dir, project.name)
-			except Exception as exc:
-				st.error(f"Could not create project: {exc}")
-			else:
-				st.success(f"Project ready: {project.name}")
-				st.rerun()
-
-	with open_tab:
-		with st.form("open_project_form"):
-			project_root = st.text_input("Existing project folder", value=str(Path.home()))
-			open_submitted = st.form_submit_button("Open project", type="primary")
-
-		if open_submitted:
-			project_dir = Path(project_root).expanduser()
-			try:
-				_set_active_project(project_dir)
-			except Exception as exc:
-				st.error(f"Could not open project: {exc}")
-			else:
-				st.success(f"Opened {project_dir.name}")
-				st.rerun()
-
 
 def _render_file_library(project: Project, project_files: list[Path]) -> None:
 	st.markdown("### Import Files")
@@ -1199,13 +1126,19 @@ def _render_project_workspace(project: Project) -> None:
 
 
 def render_app() -> None:
-	st.set_page_config(page_title="Triton", page_icon="🐚", layout="wide")
-	_render_styles()
+    st.set_page_config(page_title="Triton", page_icon="🐚", layout="wide")
+    _render_styles()
 
-	active_project = st.session_state.get("active_project")
-	_hero(active_project)
+    active_project = st.session_state.get("active_project")
+    _hero(active_project)
 
-	if active_project is None:
-		_render_project_launcher()
-	else:
-		_render_project_workspace(active_project)
+    if active_project is None:
+        _render_project_launcher(
+            set_active_project=_set_active_project,
+            collect_spectrogram_settings=_collect_spectrogram_settings,
+            create_project_fn=create_project,
+            register_recent_project_fn=register_recent_project,
+            load_recent_projects_fn=load_recent_projects,
+        )
+    else:
+        _render_project_workspace(active_project)
