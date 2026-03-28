@@ -39,6 +39,7 @@ from triton.core.io import load_audio, normalize_peak, save_audio, write_sidecar
 from triton.core.conversion import requantize
 from triton.core.spectrogram import compute_spectrogram, load_spectrogram, save_spectrogram
 from triton.degrade.vocoder import noise_vocode
+from triton.degrade.time_compression import compress_time
 
 
 PIPELINE_ACTIONS: dict[str, str] = {
@@ -48,6 +49,7 @@ PIPELINE_ACTIONS: dict[str, str] = {
 	"to_stereo": "Convert to stereo",
 	"requantize_16": "Requantize to 16-bit",
 	"vocode_noise": "Noise vocoder degradation",
+	"time_compress": "Time compression (Praat/Parselmouth)",
 }
 
 PIPELINE_STEP_ORDER = list(PIPELINE_ACTIONS.keys())
@@ -67,6 +69,8 @@ def _default_step_options(step: str, project_sr: int) -> dict[str, object]:
 		return {"bit_depth": 16}
 	if step == "vocode_noise":
 		return {"n_bands": 8, "vocoder_type": "noise", "envelope_cutoff": 160.0}
+	if step == "time_compress":
+		return {"factor": 1.0}
 	return {}
 
 
@@ -581,6 +585,13 @@ def _apply_pipeline_step(
 			vocoder_type=vocoder_type,
 		), sr
 
+	if step == "time_compress":
+		factor = float(options.get("factor", 1.0))
+		if factor <= 0:
+			raise ValueError("Compression factor must be positive.")
+		mono = audio if audio.ndim == 1 else np.mean(audio, axis=1, dtype=np.float32)
+		return compress_time(mono, sr, factor=factor), sr
+
 	raise ValueError(f"Unsupported pipeline step: {step}")
 
 
@@ -664,6 +675,7 @@ def _open_pipeline_editor(mode: str, project: Project, pipeline: Pipeline | None
 		st.session_state[f"pipeline_step_n_bands_{index}"] = int(options.get("n_bands", 8))
 		st.session_state[f"pipeline_step_vocoder_type_{index}"] = str(options.get("vocoder_type", "noise"))
 		st.session_state[f"pipeline_step_envelope_cutoff_{index}"] = float(options.get("envelope_cutoff", 160.0))
+		st.session_state[f"pipeline_step_compress_factor_{index}"] = float(options.get("factor", 1.0))
 
 
 def _close_pipeline_editor() -> None:
@@ -685,6 +697,7 @@ def _delete_pipeline_step(step_index: int) -> None:
 		"pipeline_step_n_bands_",
 		"pipeline_step_vocoder_type_",
 		"pipeline_step_envelope_cutoff_",
+		"pipeline_step_compress_factor_",
 	]
 
 	for index in range(step_index, step_count - 1):
@@ -775,6 +788,18 @@ def _render_step_options_editor(step: str, index: int, project: Project) -> dict
 			"vocoder_type": str(vocoder_type),
 			"envelope_cutoff": float(envelope_cutoff),
 		}
+
+	if step == "time_compress":
+		factor = st.slider(
+			"Compression factor",
+			min_value=0.1,
+			max_value=10.0,
+			value=float(st.session_state.get(f"pipeline_step_compress_factor_{index}", 1.0)),
+			step=0.1,
+			key=f"pipeline_step_compress_factor_{index}",
+			help="< 1.0 = faster (compression), > 1.0 = slower (expansion)",
+		)
+		return {"factor": float(factor)}
 
 	st.caption("No options for this step.")
 	return {}
