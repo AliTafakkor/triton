@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 from triton.gui.styles import APP_CSS
-
+from triton.gui.project_views import _hero
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
@@ -295,21 +295,6 @@ def _display_audio_summary(title: str, metadata: dict[str, int | str]) -> None:
 
 def _render_styles() -> None:
 		st.markdown(APP_CSS, unsafe_allow_html=True)
-
-def _hero(project: Project | None) -> None:
-	status = "No active project" if project is None else f"Active project: {project.name}"
-	st.markdown(
-		f"""
-		<div style="padding: 28px; border-radius: 28px; background: linear-gradient(135deg, var(--hero-start), var(--hero-end)); border: 1px solid var(--panel-border); box-shadow: 0 30px 60px rgba(2, 10, 16, 0.24); margin-bottom: 18px;">
-		  <div style="font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--hero-kicker); margin-bottom: 10px;">Triton workspace</div>
-		  <div style="font-size: 42px; font-weight: 800; line-height: 1.05; margin-bottom: 12px;">Project-shaped audio workflows</div>
-		  <div style="max-width: 760px; color: var(--hero-body); font-size: 17px; line-height: 1.6; margin-bottom: 14px;">Start from a project anywhere on disk, keep its audio rules consistent, and let Triton handle import, storage, and processing inside that boundary.</div>
-		  <div style="display: inline-block; padding: 8px 14px; border-radius: 999px; background: var(--hero-pill-bg); color: var(--hero-pill-text); font-size: 13px; font-weight: 700;">{status}</div>
-		</div>
-		""",
-		unsafe_allow_html=True,
-	)
-
 
 def _render_project_launcher() -> None:
 	st.subheader("Open or create a project")
