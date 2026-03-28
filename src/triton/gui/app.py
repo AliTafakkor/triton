@@ -1405,7 +1405,7 @@ def _render_project_workspace(project: Project) -> None:
 			_clear_active_project()
 			st.rerun()
 
-	import_tab, pipelines_tab, mix_tab, roadmap_tab = st.tabs(["Import", "Pipelines", "Mix", "Roadmap"])
+	import_tab, pipelines_tab, mix_tab, transcribe_tab, roadmap_tab = st.tabs(["Import", "Pipelines", "Mix", "Transcribe", "Roadmap"])
 
 	with import_tab:
 		metric_col1, metric_col2, metric_col3 = st.columns(3)
@@ -1482,6 +1482,84 @@ def _render_project_workspace(project: Project) -> None:
 						"noise_file": noise_meta["filename"],
 					},
 				)
+
+	with transcribe_tab:
+		st.markdown("### Transcribe")
+		st.write("Run speech-to-text on project files using OpenAI Whisper.")
+
+		if not project_files:
+			st.info("Import some audio files first to transcribe them.")
+		else:
+			tcol1, tcol2 = st.columns([2, 1])
+			with tcol1:
+				selected_file = st.selectbox(
+					"Select file to transcribe",
+					options=project_files,
+					format_func=lambda p: Path(p).name,
+					key="transcribe_file_select",
+				)
+			with tcol2:
+				model_size = st.selectbox(
+					"Whisper model",
+					options=["tiny", "base", "small", "medium", "large"],
+					index=2,
+					help="Larger models are more accurate but slower. 'small' is a good default.",
+					key="transcribe_model",
+				)
+
+			language = st.text_input(
+				"Language code (optional)",
+				placeholder="e.g. en, fr, de — leave blank for auto-detect",
+				key="transcribe_lang",
+			)
+
+			run_transcribe = st.button("Transcribe", type="primary", key="run_transcribe")
+
+			if run_transcribe and selected_file:
+				with st.spinner(f"Loading Whisper '{model_size}' model and transcribing..."):
+					try:
+						from triton.transcribe.whisper import transcribe_file
+
+						result = transcribe_file(
+							selected_file,
+							model_size=model_size,
+							language=language if language else None,
+						)
+
+						st.success(f"Transcription complete — detected language: **{result.language or 'unknown'}**")
+
+						st.markdown("#### Full text")
+						st.text_area(
+							"Transcript",
+							value=result.text,
+							height=150,
+							key="transcript_output",
+							label_visibility="collapsed",
+						)
+
+						if result.segments:
+							st.markdown("#### Segments")
+							segment_data = [
+								{
+									"Start (s)": f"{seg.start:.1f}",
+									"End (s)": f"{seg.end:.1f}",
+									"Text": seg.text.strip(),
+								}
+								for seg in result.segments
+							]
+							st.dataframe(segment_data, use_container_width=True)
+
+						log_project_event(
+							project.path,
+							"transcription_completed",
+							{
+								"file": Path(selected_file).name,
+								"model": model_size,
+								"language": result.language,
+							},
+						)
+					except Exception as exc:
+						st.error(f"Transcription failed: {exc}")
 
 	with roadmap_tab:
 		st.markdown("### Next GUI milestones")

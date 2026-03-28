@@ -42,7 +42,7 @@ mkdocs = ">=1.6.1,<2"
 mkdocs-material = ">=9.6.7,<10"
 
 [environments]
-default = { features = ["dev", "docs"] }
+default = { features = ["dev", "docs", "transcribe"] }
 transcribe = { features = ["dev", "docs", "transcribe"] }
 
 [pypi-dependencies]
