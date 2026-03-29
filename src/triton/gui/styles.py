@@ -73,9 +73,15 @@ APP_CSS = """
 		div[data-testid="stMetric"] {
 			background: linear-gradient(180deg, var(--metric-start), var(--metric-end));
 			border: 1px solid var(--panel-border);
-			padding: 14px;
+			padding: 16px;
 			border-radius: 18px;
 			box-shadow: 0 18px 40px rgba(2, 10, 16, 0.22);
+			transition: transform 0.2s ease, box-shadow 0.2s ease;
+		}
+
+		div[data-testid="stMetric"]:hover {
+			transform: translateY(-2px);
+			box-shadow: 0 22px 48px rgba(2, 10, 16, 0.28);
 		}
 
 		.stButton > button, .stDownloadButton > button, button[kind="primary"] {
@@ -85,6 +91,12 @@ APP_CSS = """
 			border-radius: 999px !important;
 			font-weight: 700 !important;
 			box-shadow: 0 12px 24px rgba(255, 159, 28, 0.28);
+			transition: transform 0.15s ease, box-shadow 0.15s ease;
+		}
+
+		.stButton > button:hover, .stDownloadButton > button:hover, button[kind="primary"]:hover {
+			transform: translateY(-1px);
+			box-shadow: 0 16px 32px rgba(255, 159, 28, 0.36);
 		}
 
 		.stButton > button *, .stDownloadButton > button *, button[kind="primary"] * {
@@ -167,6 +179,22 @@ APP_CSS = """
 			box-shadow: 0 18px 40px rgba(2, 10, 16, 0.16);
 		}
 
+		div[data-testid="stExpander"] {
+			border: 1px solid var(--panel-border);
+			border-radius: 16px;
+			background: var(--panel);
+		}
+
+		div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlockBorderWrapper"] {
+			border-radius: 16px;
+			border-color: var(--panel-border);
+		}
+
+		.stDataFrame {
+			border-radius: 12px;
+			overflow: hidden;
+		}
+
 		div[data-baseweb="tab-list"] {
 			gap: 8px;
 		}
@@ -174,11 +202,19 @@ APP_CSS = """
 		button[data-baseweb="tab"] {
 			background: rgba(255, 255, 255, 0.06);
 			border-radius: 999px;
-			padding: 8px 16px;
+			padding: 8px 18px;
+			transition: background 0.2s ease, box-shadow 0.2s ease;
+			border: 1px solid transparent;
+		}
+
+		button[data-baseweb="tab"]:hover {
+			background: rgba(255, 255, 255, 0.1);
 		}
 
 		button[data-baseweb="tab"][aria-selected="true"] {
-			background: rgba(255, 159, 28, 0.2);
+			background: rgba(255, 159, 28, 0.22);
+			border: 1px solid rgba(255, 159, 28, 0.3);
+			box-shadow: 0 4px 16px rgba(255, 159, 28, 0.15);
 		}
 
 		html[data-theme="light"] button[data-baseweb="tab"],

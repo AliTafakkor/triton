@@ -300,7 +300,7 @@ def _display_audio_summary(title: str, metadata: dict[str, int | str]) -> None:
 
 
 def _render_styles() -> None:
-		st.markdown(APP_CSS, unsafe_allow_html=True)
+	st.markdown(APP_CSS, unsafe_allow_html=True)
 
 def _render_file_library(project: Project, project_files: list[Path]) -> None:
 	st.markdown("### Import Files")
@@ -369,23 +369,22 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 				spec_path = _spectrogram_path(file_path)
 				check_key = f"import_checked_{_pipeline_key(str(file_path))}"
 				with st.container(border=True):
-					line1_check_col, line1_name_col, line1_player_col, line1_buttons_col = st.columns([0.8, 3.0, 2.8, 3.4])
-					with line1_check_col:
+					check_col, name_col, player_col, spec_col, ren_col, del_col = st.columns([0.4, 2.5, 3.2, 0.7, 0.7, 0.7])
+					with check_col:
 						checked = st.checkbox("Select file", key=check_key, label_visibility="collapsed")
 						if checked:
 							selected_count += 1
-					with line1_name_col:
+					with name_col:
 						new_name = st.text_input(
 							"Rename file",
 							value=file_path.name,
 							key=f"rename_input_{index}",
 							label_visibility="collapsed",
 						)
-					with line1_player_col:
+					with player_col:
 						st.audio(str(file_path), format="audio/wav")
-					with line1_buttons_col:
-						spect_col, rename_col, remove_col = st.columns(3)
-						if spect_col.button("Spec", key=f"list_spec_{index}"):
+					with spec_col:
+						if st.button("📊", key=f"list_spec_{index}", help="View spectrogram", use_container_width=True):
 							if not spec_path.exists():
 								try:
 									_generate_file_spectrogram(file_path, project)
@@ -397,7 +396,8 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 							else:
 								st.session_state["selected_spectrogram_file"] = str(file_path)
 								st.rerun()
-						if rename_col.button("Rename", key=f"rename_btn_{index}"):
+					with ren_col:
+						if st.button("✏️", key=f"rename_btn_{index}", help="Rename file", use_container_width=True):
 							try:
 								renamed = _rename_project_file(file_path, new_name)
 							except Exception as exc:
@@ -408,7 +408,8 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 								if st.session_state.get("selected_spectrogram_file") == str(file_path):
 									st.session_state["selected_spectrogram_file"] = str(renamed)
 								st.rerun()
-						if remove_col.button("Remove", key=f"remove_file_{index}"):
+					with del_col:
+						if st.button("🗑️", key=f"remove_file_{index}", help="Remove file", use_container_width=True):
 							_delete_project_file(file_path)
 							if spec_path.exists():
 								spec_path.unlink()
@@ -1141,7 +1142,7 @@ def _render_pipelines_tab(project: Project, project_files: list[Path]) -> None:
 
 				for order_index in range(step_count):
 					with st.container(border=True):
-						step_col, delete_col = st.columns([4, 1])
+						step_col, delete_col = st.columns([5, 1])
 						with step_col:
 							step = st.selectbox(
 								f"Step {order_index + 1}",
@@ -1151,12 +1152,11 @@ def _render_pipelines_tab(project: Project, project_files: list[Path]) -> None:
 							)
 						with delete_col:
 							st.button(
-								"Delete",
+								"✕",
 								key=f"pipeline_editor_delete_step_{order_index}",
 								disabled=step_count <= 1,
 								on_click=_request_delete_pipeline_step,
 								args=(order_index,),
-								width="stretch",
 							)
 						steps.append(step)
 						st.caption("Step options")
@@ -1425,25 +1425,25 @@ def _render_project_workspace(project: Project) -> None:
 
 	with roadmap_tab:
 		st.markdown("### Next GUI milestones")
-		st.write("Turn file adds into true project import that normalizes assets into canonical storage.")
-		st.write("Route RSS ingest through the same import pipeline so external audio becomes project-managed immediately.")
+		st.write("Add batch transcription across multiple files and compare intelligibility scores.")
+		st.write("Integrate time compression into the Mix tab for combined degradation experiments.")
 		st.write("Add an asset browser and recent-run history backed by project metadata.")
 
 
 def render_app() -> None:
-    st.set_page_config(page_title="Triton", page_icon="🐚", layout="wide")
-    _render_styles()
+	st.set_page_config(page_title="Triton", page_icon="🐚", layout="wide")
+	_render_styles()
 
-    active_project = st.session_state.get("active_project")
-    _hero(active_project)
+	active_project = st.session_state.get("active_project")
+	_hero(active_project)
 
-    if active_project is None:
-        _render_project_launcher(
-            set_active_project=_set_active_project,
-            collect_spectrogram_settings=_collect_spectrogram_settings,
-            create_project_fn=create_project,
-            register_recent_project_fn=register_recent_project,
-            load_recent_projects_fn=load_recent_projects,
-        )
-    else:
-        _render_project_workspace(active_project)
+	if active_project is None:
+		_render_project_launcher(
+			set_active_project=_set_active_project,
+			collect_spectrogram_settings=_collect_spectrogram_settings,
+			create_project_fn=create_project,
+			register_recent_project_fn=register_recent_project,
+			load_recent_projects_fn=load_recent_projects,
+		)
+	else:
+		_render_project_workspace(active_project)

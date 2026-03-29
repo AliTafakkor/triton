@@ -7,11 +7,12 @@ def _hero(project: Project | None) -> None:
     status = "No active project" if project is None else f"Active project: {project.name}"
     st.markdown(
         f"""
-        <div style="padding: 28px; border-radius: 28px; background: linear-gradient(135deg, var(--hero-start), var(--hero-end)); border: 1px solid var(--panel-border); box-shadow: 0 30px 60px rgba(2, 10, 16, 0.24); margin-bottom: 18px;">
-          <div style="font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--hero-kicker); margin-bottom: 10px;">Triton workspace</div>
-          <div style="font-size: 42px; font-weight: 800; line-height: 1.05; margin-bottom: 12px;">Project-shaped audio workflows</div>
-          <div style="max-width: 760px; color: var(--hero-body); font-size: 17px; line-height: 1.6; margin-bottom: 14px;">Start from a project anywhere on disk, keep its audio rules consistent, and let Triton handle import, storage, and processing inside that boundary.</div>
-          <div style="display: inline-block; padding: 8px 14px; border-radius: 999px; background: var(--hero-pill-bg); color: var(--hero-pill-text); font-size: 13px; font-weight: 700;">{status}</div>
+        <div style="padding: 32px; border-radius: 28px; background: linear-gradient(135deg, var(--hero-start), var(--hero-end)); border: 1px solid var(--panel-border); box-shadow: 0 30px 60px rgba(2, 10, 16, 0.24), inset 0 1px 0 rgba(255,255,255,0.05); margin-bottom: 22px; position: relative; overflow: hidden;">
+          <div style="position: absolute; top: 0; right: 0; width: 300px; height: 300px; background: radial-gradient(circle, rgba(255,159,28,0.08) 0%, transparent 70%); pointer-events: none;"></div>
+          <div style="font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--hero-kicker); margin-bottom: 12px; font-weight: 600;">Triton workspace</div>
+          <div style="font-size: 44px; font-weight: 800; line-height: 1.05; margin-bottom: 14px; background: linear-gradient(135deg, var(--ink), var(--muted)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Project-shaped audio workflows</div>
+          <div style="max-width: 760px; color: var(--hero-body); font-size: 16px; line-height: 1.7; margin-bottom: 16px; opacity: 0.9;">Start from a project anywhere on disk, keep its audio rules consistent, and let Triton handle import, storage, and processing inside that boundary.</div>
+          <div style="display: inline-block; padding: 8px 16px; border-radius: 999px; background: var(--hero-pill-bg); color: var(--hero-pill-text); font-size: 13px; font-weight: 700; border: 1px solid rgba(255,159,28,0.15);">{status}</div>
         </div>
         """,
         unsafe_allow_html=True,
