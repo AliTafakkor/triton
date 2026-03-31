@@ -28,6 +28,7 @@ nav:
       - transcribe: cli/transcribe.md
       - degrade: cli/degrade.md
       - convert: cli/convert.md
+      - matrix: cli/matrix.md
   - API:
       - core.mixer: api/core.mixer.md
       - core.signal: api/core.signal.md
@@ -35,6 +36,8 @@ nav:
       - core.spectrogram: api/core.spectrogram.md
       - core.conversion: api/core.conversion.md
       - core.project: api/core.project.md
+      - core.pipeline_runtime: api/core.pipeline_runtime.md
+      - core.pipeline_matrix: api/core.pipeline_matrix.md
       - ingest.rss: api/ingest.rss.md
       - transcribe.whisper: api/transcribe.whisper.md
       - degrade.vocoder: api/degrade.vocoder.md

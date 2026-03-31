@@ -19,10 +19,17 @@ Triton is moving to a **project-first** workflow: you create/open a project, def
   </div>
 </div>
 
+## Key Features
+
+**Pipelines & Reproducibility**: Define processing pipelines in your project config and run them on any file with consistent settings. Use [Pipeline Matrix](cli/matrix.md) to sweep across multiple files and parameter combinations in a single batch.
+
+**Project-first workflow**: Centralized settings, file management, and reproducible outputs.
+
 ## Quickstart
 
 - Launch GUI and create/open a project.
 - Add files and manage project assets.
 - Mix at target SNR in GUI or run CLI commands on project files.
+- For batch processing, define a pipeline and run [Pipeline Matrix](cli/matrix.md) for parameter sweeps.
 
 See the [Quickstart](quickstart.md) for commands.
