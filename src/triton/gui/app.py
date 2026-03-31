@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 from triton.gui.styles import APP_CSS
-from triton.gui.project_views import _hero, _render_project_launcher
+from triton.gui.project_views import _hero, _render_project_launcher, _render_matrix_tab
 from datetime import date, datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from io import BytesIO
@@ -1153,7 +1153,19 @@ def _render_project_workspace(project: Project) -> None:
 		_render_rss_ingest_tab(project)
 
 	with pipelines_tab:
-		_render_pipelines_tab(project, project_files)
+		run_subtab, matrix_subtab = st.tabs(["Run Pipeline", "Pipeline Matrix"])
+		
+		with run_subtab:
+			_render_pipelines_tab(project, project_files)
+		
+		with matrix_subtab:
+			_render_matrix_tab(
+				project,
+				project_files,
+				load_pipelines=_load_pipelines,
+				log_event=log_project_event,
+				new_run_id=_new_pipeline_run_id,
+			)
 
 	with mix_tab:
 		col1, col2 = st.columns(2)
