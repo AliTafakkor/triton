@@ -25,16 +25,30 @@ def _match_length(noise: np.ndarray, target_length: int) -> np.ndarray:
 	return noise[..., :target_length]
 
 
-def mix_at_snr(speech: np.ndarray, noise: np.ndarray, snr_db: float) -> np.ndarray:
-	"""Mix speech and noise at a target SNR (dB) using RMS scaling.
+
+
+
+def mix_at_snr(speech: np.ndarray, noise: np.ndarray, snr_db: float, target_rms: float | None = None) -> np.ndarray:
+	"""Mix speech and noise at a target SNR (dB) using symmetric amplitude scaling.
+
+	Implements the following procedure:
+	1. Normalize both signals independently to the same RMS level before mixing.
+	2. Split the target SNR symmetrically: boost signal by SNR/2 dB and attenuate
+	   noise by SNR/2 dB. Use the SPL/amplitude convention: multiplier = 10^(dB/20).
+	3. Mix as a weighted sum: mixed = signal * multS + noise * multN
+	4. Re-normalize the result to the target RMS. This corrects for energy
+	   accumulation without altering the SNR, since both components are scaled equally.
+	5. The SNR is defined by the ratio of the two multipliers, not absolute levels.
 
 	Args:
 		speech: Speech waveform array.
 		noise: Noise waveform array.
 		snr_db: Target signal-to-noise ratio in dB.
+		target_rms: Target RMS level for each signal before mixing. If None, uses
+			the RMS of the speech signal.
 
 	Returns:
-		Mixed waveform normalized to max amplitude 1.0.
+		Mixed waveform normalized to target RMS.
 	"""
 	speech = np.asarray(speech, dtype=np.float32)
 	noise = np.asarray(noise, dtype=np.float32)
@@ -44,18 +58,144 @@ def mix_at_snr(speech: np.ndarray, noise: np.ndarray, snr_db: float) -> np.ndarr
 
 	noise = _match_length(noise, speech.shape[-1])
 
+	# Step 1: Normalize both signals independently to the same RMS level
 	speech_rms = float(rms(speech))
 	noise_rms = float(rms(noise))
+
+	if speech_rms <= 0:
+		raise ValueError("Speech RMS is zero; cannot mix.")
 	if noise_rms <= 0:
-		raise ValueError("Noise RMS is zero; cannot scale to target SNR.")
+		raise ValueError("Noise RMS is zero; cannot mix.")
 
-	target_noise_rms = speech_rms / (10 ** (snr_db / 20.0))
-	scale = target_noise_rms / noise_rms
+	# Use speech RMS as reference if no target specified
+	if target_rms is None:
+		target_rms = speech_rms
 
-	scaled_noise = noise * scale
-	mixed = speech + scaled_noise
+	normalized_speech = normalize_rms(speech, target_rms)
+	normalized_noise = normalize_rms(noise, target_rms)
 
-	return normalize_peak(mixed)
+	# Step 2: Split the SNR symmetrically
+	# SNR = 20 * log10(mult_signal / mult_noise)
+	# For symmetric split: mult_signal = 10^(SNR/2/20) and mult_noise = 10^(-SNR/2/20)
+	half_snr_linear = 10 ** (snr_db / 2 / 20)
+	mult_speech = half_snr_linear
+	mult_noise = 1 / half_snr_linear
+
+	# Step 3: Mix as weighted sum
+	mixed = normalized_speech * mult_speech + normalized_noise * mult_noise
+
+	# Step 4: Re-normalize to target RMS
+	# This corrects for energy accumulation without altering the SNR
+	mixed = normalize_rms(mixed, target_rms)
+
+	return mixed
+
+
+def mix_at_snr_segmented(
+	speech: np.ndarray,
+	noise: np.ndarray,
+	snr_db_array: np.ndarray | list[float],
+	segment_samples: int,
+	target_rms: float | None = None,
+	smooth_boundaries: bool = True,
+) -> np.ndarray:
+	"""Mix speech and noise with varying SNR across segments, optionally smoothing boundaries.
+
+	If multiple SNR levels are applied to consecutive segments, smooth the multiplier
+	vectors across segment boundaries to avoid abrupt transitions.
+
+	Args:
+		speech: Speech waveform array.
+		noise: Noise waveform array.
+		snr_db_array: Array of target SNR values in dB for each segment.
+		segment_samples: Number of samples per segment.
+		target_rms: Target RMS level for each signal before mixing. If None, uses
+			the RMS of the speech signal.
+		smooth_boundaries: If True, apply linear interpolation across segment
+			boundaries to smooth multiplier transitions.
+
+	Returns:
+		Mixed waveform with variable SNR, normalized to target RMS.
+	"""
+	speech = np.asarray(speech, dtype=np.float32)
+	noise = np.asarray(noise, dtype=np.float32)
+	snr_db_array = np.asarray(snr_db_array, dtype=np.float32)
+
+	if speech.shape[-1] == 0:
+		raise ValueError("Speech must have non-zero length.")
+
+	noise = _match_length(noise, speech.shape[-1])
+
+# Step 1: Normalize both signals independently to the same RMS level
+	speech_rms = float(rms(speech))
+	noise_rms = float(rms(noise))
+
+	if speech_rms <= 0:
+		raise ValueError("Speech RMS is zero; cannot mix.")
+	if noise_rms <= 0:
+		raise ValueError("Noise RMS is zero; cannot mix.")
+
+	if target_rms is None:
+		target_rms = speech_rms
+
+	normalized_speech = normalize_rms(speech, target_rms)
+	normalized_noise = normalize_rms(noise, target_rms)
+
+	# Step 2: Build multiplier vectors for each segment
+	num_samples = speech.shape[-1]
+	num_segments = int(np.ceil(num_samples / segment_samples))
+
+	# Ensure snr_db_array matches number of segments
+	if len(snr_db_array) != num_segments:
+		if len(snr_db_array) == 1:
+			snr_db_array = np.repeat(snr_db_array, num_segments)
+		else:
+			raise ValueError(
+				f"Length of snr_db_array ({len(snr_db_array)}) must match "
+				f"number of segments ({num_segments})"
+			)
+
+	# Compute multipliers for each segment
+	mult_speech_seg = np.zeros(num_samples, dtype=np.float32)
+	mult_noise_seg = np.zeros(num_samples, dtype=np.float32)
+
+	for i in range(num_segments):
+		start_idx = i * segment_samples
+		end_idx = min((i + 1) * segment_samples, num_samples)
+		half_snr_linear = 10 ** (snr_db_array[i] / 2 / 20)
+		mult_speech_seg[start_idx:end_idx] = half_snr_linear
+		mult_noise_seg[start_idx:end_idx] = 1 / half_snr_linear
+
+	# Step 3: Smooth boundaries if requested
+	if smooth_boundaries and num_segments > 1:
+		smooth_window = min(segment_samples // 4, 512)  # Smooth over ~1/4 of segment
+		for i in range(num_segments - 1):
+			boundary_idx = (i + 1) * segment_samples
+			if boundary_idx < num_samples:
+				# Linear blend across boundary
+				start_blend = max(0, boundary_idx - smooth_window)
+				end_blend = min(num_samples, boundary_idx + smooth_window)
+				blend_len = end_blend - start_blend
+				if blend_len > 0:
+					blend_factor = np.linspace(0, 1, blend_len)
+					before_val_s = mult_speech_seg[start_blend]
+					after_val_s = mult_speech_seg[min(boundary_idx + smooth_window - 1, num_samples - 1)]
+					before_val_n = mult_noise_seg[start_blend]
+					after_val_n = mult_noise_seg[min(boundary_idx + smooth_window - 1, num_samples - 1)]
+					mult_speech_seg[start_blend:end_blend] = (
+						before_val_s * (1 - blend_factor) + after_val_s * blend_factor
+					)
+					mult_noise_seg[start_blend:end_blend] = (
+						before_val_n * (1 - blend_factor) + after_val_n * blend_factor
+					)
+
+	# Step 4: Mix as weighted sum
+	mixed = normalized_speech * mult_speech_seg + normalized_noise * mult_noise_seg
+
+	# Step 5: Re-normalize to target RMS
+	mixed = normalize_rms(mixed, target_rms)
+
+	return mixed
 
 
 def mix_babble(
