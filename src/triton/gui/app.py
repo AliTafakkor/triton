@@ -178,11 +178,18 @@ def _generate_file_spectrogram(audio_path: Path, project: Project) -> Path:
 
 def _save_uploaded_project_files(project: Project, uploaded_files: list[object]) -> list[Path]:
 	saved_paths: list[Path] = []
-	for uploaded_file in uploaded_files:
-		path = add_project_file(project.path, uploaded_file.name, uploaded_file.getvalue())
-		saved_paths.append(path)
-		_generate_file_spectrogram(path, project)
-
+	with st.status("Importing files...", expanded=True) as status:
+		progress_bar = st.progress(0.0)
+		for idx, uploaded_file in enumerate(uploaded_files):
+			status.write(f"Importing: {uploaded_file.name}")
+			path = add_project_file(project.path, uploaded_file.name, uploaded_file.getvalue())
+			saved_paths.append(path)
+			_generate_file_spectrogram(path, project)
+			progress = (idx + 1) / len(uploaded_files)
+			status.update(label=f"Importing files... ({idx + 1}/{len(uploaded_files)})", state="running")
+			progress_bar.progress(progress)
+		status.update(label=f"Imported {len(saved_paths)} file(s)", state="complete")
+	
 	if saved_paths:
 		log_project_event(
 			project.path,
@@ -196,13 +203,20 @@ def _save_uploaded_project_files(project: Project, uploaded_files: list[object])
 def _regenerate_all_project_spectrograms(project: Project, project_files: list[Path]) -> tuple[int, list[str]]:
 	updated = 0
 	errors: list[str] = []
-	for file_path in project_files:
-		try:
-			_generate_file_spectrogram(file_path, project)
-		except Exception as exc:
-			errors.append(f"{file_path.name}: {exc}")
-		else:
-			updated += 1
+	with st.status("Regenerating spectrograms...", expanded=True) as status:
+		progress_bar = st.progress(0.0)
+		for idx, file_path in enumerate(project_files):
+			status.write(f"Processing: {file_path.name}")
+			try:
+				_generate_file_spectrogram(file_path, project)
+			except Exception as exc:
+				errors.append(f"{file_path.name}: {exc}")
+			else:
+				updated += 1
+			progress = (idx + 1) / len(project_files)
+			status.update(label=f"Regenerating spectrograms... ({idx + 1}/{len(project_files)})", state="running")
+			progress_bar.progress(progress)
+		status.update(label=f"Regenerated {updated} file(s)", state="complete")
 
 	log_project_event(
 		project.path,
@@ -327,7 +341,6 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 		return
 
 	selected_spectrogram = st.session_state.get("selected_spectrogram_file")
-	selected_count = 0
 
 	st.markdown("### Imported Files")
 	list_col, panel_col = st.columns([1.9, 1.1], gap="large")
@@ -350,64 +363,100 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 		if not visible_files:
 			st.info("No files match your search.")
 		else:
-			for index, file_path in enumerate(visible_files):
+			# Pagination
+			items_per_page = 15
+			total_pages = (len(visible_files) + items_per_page - 1) // items_per_page
+			current_page = st.session_state.get("file_list_page", 0)
+			current_page = min(current_page, total_pages - 1)
+
+			start_idx = current_page * items_per_page
+			end_idx = start_idx + items_per_page
+			page_files = visible_files[start_idx:end_idx]
+
+			# Table header
+			header_cols = st.columns([0.4, 2.5, 1.5, 1.0, 0.7, 0.7, 0.7])
+			with header_cols[0]:
+				st.caption("✓")
+			with header_cols[1]:
+				st.caption("**File Name**")
+			with header_cols[2]:
+				st.caption("**Size**")
+			with header_cols[3]:
+				st.caption("**Type**")
+			with header_cols[4]:
+				st.caption("**View**")
+			with header_cols[5]:
+				st.caption("**Rename**")
+			with header_cols[6]:
+				st.caption("**Delete**")
+
+			# Table rows
+			for index, file_path in enumerate(page_files):
+				global_index = start_idx + index
 				spec_path = _spectrogram_path(file_path)
 				check_key = f"import_checked_{_pipeline_key(str(file_path))}"
-				with st.container(border=True):
-					check_col, name_col, player_col, spec_col, ren_col, del_col = st.columns([0.4, 2.5, 3.2, 0.7, 0.7, 0.7])
-					with check_col:
-						checked = st.checkbox("Select file", key=check_key, label_visibility="collapsed")
-						if checked:
-							selected_count += 1
-					with name_col:
-						new_name = st.text_input(
-							"Rename file",
-							value=file_path.name,
-							key=f"rename_input_{index}",
-							label_visibility="collapsed",
-						)
-					with player_col:
-						st.audio(str(file_path), format="audio/wav")
-					with spec_col:
-						if st.button("📊", key=f"list_spec_{index}", help="View spectrogram", use_container_width=True):
-							if not spec_path.exists():
-								try:
-									_generate_file_spectrogram(file_path, project)
-								except Exception as exc:
-									st.error(f"Could not generate spectrogram for {file_path.name}: {exc}")
-								else:
-									st.session_state["selected_spectrogram_file"] = str(file_path)
-									st.rerun()
+
+				row_cols = st.columns([0.4, 2.5, 1.5, 1.0, 0.7, 0.7, 0.7])
+
+				with row_cols[0]:
+					st.checkbox("Select file", key=check_key, label_visibility="collapsed")
+
+				with row_cols[1]:
+					st.caption(file_path.name)
+
+				with row_cols[2]:
+					st.caption(_format_file_size(file_path.stat().st_size))
+
+				with row_cols[3]:
+					st.caption(file_path.suffix.lower())
+
+				with row_cols[4]:
+					if st.button("📊", key=f"spec_{global_index}", help="View spectrogram", use_container_width=True):
+						if not spec_path.exists():
+							try:
+								_generate_file_spectrogram(file_path, project)
+							except Exception as exc:
+								st.error(f"Could not generate spectrogram for {file_path.name}: {exc}")
 							else:
 								st.session_state["selected_spectrogram_file"] = str(file_path)
 								st.rerun()
-					with ren_col:
-						if st.button("✏️", key=f"rename_btn_{index}", help="Rename file", use_container_width=True):
-							try:
-								renamed = _rename_project_file(file_path, new_name)
-							except Exception as exc:
-								st.error(f"Could not rename {file_path.name}: {exc}")
-							else:
-								if spec_path.exists():
-									_spectrogram_path(file_path).rename(_spectrogram_path(renamed))
-								if st.session_state.get("selected_spectrogram_file") == str(file_path):
-									st.session_state["selected_spectrogram_file"] = str(renamed)
-								st.rerun()
-					with del_col:
-						if st.button("🗑️", key=f"remove_file_{index}", help="Remove file", use_container_width=True):
-							_delete_project_file(file_path)
-							if spec_path.exists():
-								spec_path.unlink()
-							if st.session_state.get("selected_spectrogram_file") == str(file_path):
-								st.session_state.pop("selected_spectrogram_file", None)
-							st.session_state.pop(check_key, None)
+						else:
+							st.session_state["selected_spectrogram_file"] = str(file_path)
 							st.rerun()
 
-					line2_path_col, line2_details_col = st.columns([7, 3])
-					with line2_path_col:
-						st.caption(str(file_path))
-					with line2_details_col:
-						st.caption(f"{_format_file_size(file_path.stat().st_size)} | {file_path.suffix.lower()}")
+				with row_cols[5]:
+					if st.button("✏️", key=f"rename_{global_index}", help="Rename file", use_container_width=True):
+						st.session_state["rename_mode"] = global_index
+						st.rerun()
+
+				with row_cols[6]:
+					if st.button("🗑️", key=f"delete_{global_index}", help="Delete file", use_container_width=True):
+						_delete_project_file(file_path)
+						if spec_path.exists():
+							spec_path.unlink()
+						if st.session_state.get("selected_spectrogram_file") == str(file_path):
+							st.session_state.pop("selected_spectrogram_file", None)
+						st.session_state.pop(check_key, None)
+						st.rerun()
+
+			# Pagination controls
+			if total_pages > 1:
+				pagination_cols = st.columns([1, 1, 1, 1])
+				with pagination_cols[0]:
+					if st.button("⬅ Previous", key="prev_page", use_container_width=True, disabled=current_page == 0):
+						st.session_state["file_list_page"] = max(0, current_page - 1)
+						st.rerun()
+
+				with pagination_cols[1]:
+					st.caption(f"Page {current_page + 1} of {total_pages}")
+
+				with pagination_cols[2]:
+					if st.button("Next ➡", key="next_page", use_container_width=True, disabled=current_page >= total_pages - 1):
+						st.session_state["file_list_page"] = min(total_pages - 1, current_page + 1)
+						st.rerun()
+
+				with pagination_cols[3]:
+					st.caption(f"Showing {len(page_files)} of {len(visible_files)} file(s)")
 
 	with panel_col:
 		with st.container(border=True):
@@ -477,8 +526,6 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 								width="stretch",
 								config={"scrollZoom": True, "displaylogo": False},
 							)
-
-	st.caption(f"Selected in list: {selected_count}")
 
 
 def _parse_episode_published_date(published: str | None) -> date | None:
@@ -640,7 +687,7 @@ def _render_rss_ingest_tab(project: Project) -> None:
 	if fetch_only:
 		return
 
-	with st.spinner(f"Downloading {len(selected_entries)} episode(s)..."):
+	with st.status("Downloading episodes...", expanded=True) as download_status:
 		try:
 			downloaded_paths = source.download(selected_entries, raw_dir, overwrite=overwrite)
 		except Exception as exc:
@@ -649,14 +696,23 @@ def _render_rss_ingest_tab(project: Project) -> None:
 
 	generated_specs = 0
 	spec_errors: list[str] = []
-	for path_str in downloaded_paths:
-		file_path = Path(path_str)
-		try:
-			_generate_file_spectrogram(file_path, project)
-		except Exception as exc:
-			spec_errors.append(f"{file_path.name}: {exc}")
-		else:
-			generated_specs += 1
+	
+	if downloaded_paths:
+		with st.status("Generating spectrograms...", expanded=True) as spec_status:
+			spec_progress_bar = st.progress(0.0)
+			for idx, path_str in enumerate(downloaded_paths):
+				file_path = Path(path_str)
+				spec_status.write(f"Processing: {file_path.name}")
+				try:
+					_generate_file_spectrogram(file_path, project)
+				except Exception as exc:
+					spec_errors.append(f"{file_path.name}: {exc}")
+				else:
+					generated_specs += 1
+				spec_progress_val = (idx + 1) / len(downloaded_paths)
+				spec_status.update(label=f"Generating spectrograms... ({idx + 1}/{len(downloaded_paths)})", state="running")
+				spec_progress_bar.progress(spec_progress_val)
+			spec_status.update(label=f"Generated {generated_specs} spectrogram(s)", state="complete")
 
 	log_project_event(
 		project.path,

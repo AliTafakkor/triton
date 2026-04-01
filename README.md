@@ -14,6 +14,12 @@ Triton provides multiple normalization strategies:
 - **Peak normalization**: Scale to target peak amplitude (~0.99) for safety headroom
 - **RMS normalization**: Scale to target loudness/energy (duration-independent), ideal for noise mixing and speech processing where consistent SNR is critical
 
+For **audio mixing**, Triton uses symmetric RMS-based SNR scaling:
+- Both signals normalized independently to the same RMS level before mixing
+- Target SNR split symmetrically: signal boosted by SNR/2 dB, noise attenuated by SNR/2 dB
+- Result re-normalized to target RMS after mixing, controlling loudness independently of SNR
+- Optional boundary smoothing for multi-segment mixing to avoid abrupt transitions
+
 ## Proposed Workflow
 1. Create a project.
 2. Save project settings, including sample rate, mono/stereo policy, and output layout.
