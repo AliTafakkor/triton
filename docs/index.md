@@ -7,15 +7,15 @@ Triton is moving to a **project-first** workflow: you create/open a project, def
 <div style="display:flex; gap:16px; flex-wrap:wrap;">
   <div style="flex:1; min-width:240px; background:#0f2d3f; padding:16px; border-radius:8px;">
     <h3>Core</h3>
-    <p>Dependency-light math for SNR mixing, vocoding, and filtering.</p>
+    <p>Dependency-light math for SNR mixing, babble generation, vocoding, and filtering.</p>
   </div>
   <div style="flex:1; min-width:240px; background:#0f2d3f; padding:16px; border-radius:8px;">
     <h3>CLI</h3>
-    <p>Batch processing for large datasets with reproducible settings.</p>
+    <p>Batch processing for large datasets with reproducible settings. Label and organize files for cleaner workflows.</p>
   </div>
   <div style="flex:1; min-width:240px; background:#0f2d3f; padding:16px; border-radius:8px;">
     <h3>GUI</h3>
-    <p>Project dashboard for create/open, file management, and interactive mixing.</p>
+    <p>Project dashboard for create/open, file management with labeling, and interactive mixing.</p>
   </div>
 </div>
 
@@ -25,11 +25,15 @@ Triton is moving to a **project-first** workflow: you create/open a project, def
 
 **Project-first workflow**: Centralized settings, file management, and reproducible outputs.
 
+**File Labeling**: Organize your project files with custom labels (e.g., `bab-f1`, `bab-m1`, `background`), apply one label to a whole upload batch during import, and filter by label in CLI and GUI for easier asset management.
+
+**Babble Speech Generation**: Mix labeled talker groups with per-file RMS normalization, concatenation per talker, and balanced male/female selection when counts are not specified. Useful for speech-in-noise research and cocktail-party effect studies.
+
 ## Quickstart
 
 - Launch GUI and create/open a project.
-- Add files and manage project assets.
-- Mix at target SNR in GUI or run CLI commands on project files.
+- Add files, label them for organization, and manage project assets.
+- Generate babble from labeled talker groups, or mix at target SNR in GUI or CLI.
 - For batch processing, define a pipeline and run [Pipeline Matrix](cli/matrix.md) for parameter sweeps.
 
 See the [Quickstart](quickstart.md) for commands.

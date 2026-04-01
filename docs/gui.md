@@ -36,6 +36,7 @@ Each project stores config and data inside its own directory:
 The Import tab is the default project workspace entry point for source files.
 
 - import one or more audio files into project raw storage (`data/raw`)
+- optionally assign one label to the full upload batch during import
 - view files in a compact list with metadata
 - play audio inline per file
 - rename or remove files
@@ -71,6 +72,29 @@ Mix speech and noise interactively:
 - preview result and download mixed output
 
 Inputs are normalized in-session to project audio settings before mixing.
+
+## Babble Tab
+
+Generate babble speech from labeled talker groups:
+
+- select the total number of talker groups to mix
+- optionally set female and male counts separately
+- optionally assign the same label to an uploaded batch in the Import tab
+- use labels such as `bab-f1`, `bab-f2`, `bab-m1`, and `bab-m2`
+- normalize each source file to the target RMS before concatenating files for the same talker
+- optionally peak-normalize the mixed output to prevent clipping
+- download the generated babble for use in experiments
+
+If no sex split is provided, Triton balances female and male talkers as evenly as possible. When multiple files share a babble label, they are concatenated in filename order after RMS normalization.
+
+Typical workflow:
+
+1. Label talker-group files in the Import tab during upload, or edit labels later (e.g., `bab-f1`, `bab-m1`)
+2. Go to the Babble tab
+3. Review the available babble talker groups
+4. Set the total number of talkers, then optionally set female and male counts
+5. Adjust target RMS and peak normalization settings
+6. Click "Generate Babble" and download the output
 
 ## Pipelines Tab
 
