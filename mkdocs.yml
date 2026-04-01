@@ -24,6 +24,8 @@ nav:
   - GUI: gui.md
   - CLI:
       - mix: cli/mix.md
+      - babble: cli/babble.md
+      - files: cli/files.md
       - ingest: cli/ingest.md
       - transcribe: cli/transcribe.md
       - degrade: cli/degrade.md

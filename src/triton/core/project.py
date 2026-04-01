@@ -12,12 +12,14 @@ from typing import Literal
 
 
 ChannelMode = Literal["mono", "stereo"]
+BabbleSex = Literal["m", "f"]
 
 PROJECT_CONFIG_NAME = "triton.toml"
 RECENT_PROJECTS_LIMIT = 8
 APP_CONFIG_DIR = Path.home() / ".config" / "triton"
 RECENT_PROJECTS_PATH = APP_CONFIG_DIR / "recent_projects.json"
 SUPPORTED_AUDIO_SUFFIXES = {".wav", ".flac", ".ogg", ".mp3", ".m4a"}
+BABBLE_TALKER_LABEL_RE = re.compile(r"^bab-(?P<sex>[mf])(?P<index>\d+)$")
 DEFAULT_SPECTROGRAM_SETTINGS: dict[str, object] = {
 	"type": "stft",
 	"n_fft": 1024,
@@ -108,6 +110,14 @@ class Pipeline:
 	name: str
 	steps: list[str]
 	step_options: dict[str, dict[str, object]] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class BabbleTalkerGroup:
+	label: str
+	sex: BabbleSex
+	index: int
+	files: list[Path]
 
 
 def project_config_path(project_dir: Path) -> Path:
@@ -410,6 +420,219 @@ def rename_project_file(file_path: Path, new_name: str) -> Path:
 		},
 	)
 	return renamed
+
+
+def _file_labels_path(project_dir: Path) -> Path:
+	"""Return path to file labels metadata file."""
+	return project_dir / "metadata" / "file_labels.json"
+
+
+def load_file_labels(project_dir: Path) -> dict[str, str]:
+	"""Load file labels from project metadata.
+	
+	Returns:
+		Dict mapping relative file paths to label strings.
+	"""
+	labels_path = _file_labels_path(project_dir)
+	if not labels_path.exists():
+		return {}
+	
+	try:
+		return json.loads(labels_path.read_text(encoding="utf-8"))
+	except (json.JSONDecodeError, IOError):
+		return {}
+
+
+def save_file_labels(project_dir: Path, labels: dict[str, str]) -> None:
+	"""Save file labels to project metadata."""
+	labels_path = _file_labels_path(project_dir)
+	labels_path.parent.mkdir(parents=True, exist_ok=True)
+	labels_path.write_text(json.dumps(labels, indent=2), encoding="utf-8")
+
+
+def set_file_label(project_dir: Path, file_path: Path, label: str) -> None:
+	"""Set a label for a project file.
+	
+	Args:
+		project_dir: Path to the project directory.
+		file_path: Path to the audio file.
+		label: Label to assign (empty string to remove label).
+	"""
+	raw_dir = project_raw_dir(project_dir)
+	# Ensure we're working with a file in the project
+	if not file_path.resolve().parent == raw_dir.resolve():
+		raise ValueError(f"File must be in project raw directory: {raw_dir}")
+	
+	labels = load_file_labels(project_dir)
+	filename = file_path.name
+	
+	if label.strip():
+		labels[filename] = label.strip()
+	else:
+		labels.pop(filename, None)
+	
+	save_file_labels(project_dir, labels)
+	log_project_event(
+		project_dir,
+		"file_labeled",
+		{"filename": filename, "label": label.strip() if label.strip() else None},
+	)
+
+
+def set_project_file_labels(project_dir: Path, file_paths: list[Path], label: str) -> None:
+	"""Apply the same label to multiple project files."""
+	for file_path in file_paths:
+		set_file_label(project_dir, file_path, label)
+
+
+def get_file_label(project_dir: Path, file_path: Path) -> str | None:
+	"""Get the label for a project file, if any."""
+	labels = load_file_labels(project_dir)
+	return labels.get(file_path.name)
+
+
+def list_project_files(project_dir: Path, label: str | None = None) -> list[Path]:
+	"""List audio files in project, optionally filtered by label.
+	
+	Args:
+		project_dir: Path to the project directory.
+		label: Optional label to filter by.
+	
+	Returns:
+		Sorted list of audio file paths.
+	"""
+	raw_dir = project_raw_dir(project_dir)
+	if not raw_dir.exists():
+		return []
+
+	files = sorted(
+		[path for path in raw_dir.iterdir() if path.is_file() and path.suffix.lower() in SUPPORTED_AUDIO_SUFFIXES],
+		key=lambda path: path.name.lower(),
+	)
+	
+	if label is not None:
+		labels = load_file_labels(project_dir)
+		files = [f for f in files if labels.get(f.name) == label]
+	
+	return files
+
+
+def _parse_babble_talker_label(label: str | None) -> tuple[BabbleSex, int] | None:
+	if not label:
+		return None
+
+	match = BABBLE_TALKER_LABEL_RE.match(label.strip())
+	if not match:
+		return None
+
+	return match.group("sex"), int(match.group("index"))
+
+
+def load_babble_talker_groups(project_dir: Path) -> list[BabbleTalkerGroup]:
+	"""Load talker groups from project labels for babble generation.
+
+	Files labeled with the convention ``bab-f1``, ``bab-m2``, etc. are grouped
+	by label. Each group represents one talker and may contain multiple files.
+	"""
+	labels = load_file_labels(project_dir)
+	groups: dict[tuple[BabbleSex, int], list[Path]] = {}
+
+	for file_path in list_project_files(project_dir):
+		parsed = _parse_babble_talker_label(labels.get(file_path.name))
+		if parsed is None:
+			continue
+		groups.setdefault(parsed, []).append(file_path)
+
+	return [
+		BabbleTalkerGroup(
+			label=f"bab-{sex}{index}",
+			sex=sex,
+			index=index,
+			files=sorted(files, key=lambda path: path.name.lower()),
+		)
+		for (sex, index), files in sorted(groups.items(), key=lambda item: (item[0][0], item[0][1]))
+	]
+
+
+def select_babble_talker_groups(
+	project_dir: Path,
+	num_talkers: int,
+	num_female_talkers: int | None = None,
+	num_male_talkers: int | None = None,
+) -> list[BabbleTalkerGroup]:
+	"""Select babble talker groups from labeled project files.
+
+	If female and male counts are not provided, the requested number of talkers
+	is split as evenly as possible across female and male groups.
+	"""
+	if num_talkers <= 0:
+		raise ValueError("Number of talkers must be positive.")
+
+	groups = load_babble_talker_groups(project_dir)
+	female_groups = [group for group in groups if group.sex == "f"]
+	male_groups = [group for group in groups if group.sex == "m"]
+	available_total = len(female_groups) + len(male_groups)
+	if available_total < num_talkers:
+		raise ValueError(
+			f"Only {available_total} babble-labeled talkers were found, but {num_talkers} were requested."
+		)
+
+	auto_balance = num_female_talkers is None and num_male_talkers is None
+	if num_female_talkers is None and num_male_talkers is None:
+		num_female_talkers = min(num_talkers // 2, len(female_groups))
+		num_male_talkers = min(num_talkers - num_female_talkers, len(male_groups))
+		while num_female_talkers + num_male_talkers < num_talkers:
+			female_room = len(female_groups) - num_female_talkers
+			male_room = len(male_groups) - num_male_talkers
+			if female_room <= 0 and male_room <= 0:
+				raise ValueError(
+					"Not enough babble-labeled talkers available to balance the requested count."
+				)
+			if female_room >= male_room and female_room > 0:
+				num_female_talkers += 1
+			elif male_room > 0:
+				num_male_talkers += 1
+			elif female_room > 0:
+				num_female_talkers += 1
+			else:
+				num_male_talkers += 1
+	elif num_female_talkers is None:
+		num_male_talkers = int(num_male_talkers)
+		num_female_talkers = num_talkers - num_male_talkers
+	elif num_male_talkers is None:
+		num_female_talkers = int(num_female_talkers)
+		num_male_talkers = num_talkers - num_female_talkers
+	else:
+		num_female_talkers = int(num_female_talkers)
+		num_male_talkers = int(num_male_talkers)
+		if num_female_talkers + num_male_talkers != num_talkers:
+			raise ValueError("Female and male talker counts must add up to the total talker count.")
+
+	if num_female_talkers < 0 or num_male_talkers < 0:
+		raise ValueError("Talker counts must be non-negative.")
+
+	if auto_balance:
+		while num_female_talkers > len(female_groups) and num_male_talkers < len(male_groups):
+			num_female_talkers -= 1
+			num_male_talkers += 1
+		while num_male_talkers > len(male_groups) and num_female_talkers < len(female_groups):
+			num_male_talkers -= 1
+			num_female_talkers += 1
+		if num_female_talkers > len(female_groups) or num_male_talkers > len(male_groups):
+			raise ValueError(
+				"Not enough babble-labeled talkers available to balance the requested count."
+			)
+	else:
+		if num_female_talkers > len(female_groups) or num_male_talkers > len(male_groups):
+			raise ValueError(
+				"Not enough babble-labeled talkers available for the requested female/male split."
+			)
+
+	selected_female = female_groups[:num_female_talkers]
+	selected_male = male_groups[:num_male_talkers]
+	selected = selected_female + selected_male
+
+	return sorted(selected, key=lambda group: (group.sex, group.index))
 
 
 def _toml_string(value: str) -> str:

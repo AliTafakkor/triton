@@ -3,6 +3,12 @@ An audio signal processing toolkit for speech-in-noise research.
 
 Triton is a modular audio utility designed to standardize stimuli preparation and signal degradation. It provides a robust, reproducible "vessel" for audio manipulation, bridging the gap between raw signal math and accessible lab tools.
 
+## New Features
+
+**Babble Speech Generation**: Mix labeled talker groups such as `bab-f1` and `bab-m1`, normalize each source file to a common RMS, concatenate files per talker, and generate cocktail-party scenarios with balanced male/female selection. Babble generation now runs through a shared core noise-generation function used by both CLI and GUI, with intended-length planning and random repeat of short talkers.
+
+**File Labeling**: Organize your project files with custom labels (e.g., `bab-f1`, `bab-m1`, `background`), apply one label to a whole upload batch during import, and filter files by label in both CLI and GUI for easier asset management and processing.
+
 ## Product Direction
 Triton should evolve toward a project-centric workflow. Instead of treating every command as a one-off file transform, the system should organize work around a project that defines the audio contract for everything inside it.
 
@@ -23,7 +29,7 @@ For **audio mixing**, Triton uses symmetric RMS-based SNR scaling:
 ## Proposed Workflow
 1. Create a project.
 2. Save project settings, including sample rate, mono/stereo policy, and output layout.
-3. Import local files or ingest external sources into that project.
+3. Import local files or ingest external sources into that project, optionally applying one label to all files uploaded together.
 4. Convert imported media automatically to the project specification.
 5. Run downstream tasks such as degrade, transcribe, convert, and mix against project-managed assets.
 6. Persist outputs and metadata back into the project so runs are reproducible.
@@ -165,7 +171,7 @@ Project defaults live in `triton.toml` under `[spectrogram]`:
 - `n_fft`, `hop_length`, `win_length`, `window`
 - `n_mels`, `fmin`, `fmax`, `power`
 
-When audio is imported in the GUI Import tab, Triton computes and stores a spectrogram artifact per file using those defaults.
+When audio is imported in the GUI Import tab, Triton computes and stores a spectrogram artifact per file using those defaults. The same import form also lets you assign one label to the entire batch of uploaded files.
 
 Artifacts:
 

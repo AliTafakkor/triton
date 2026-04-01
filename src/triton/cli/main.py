@@ -16,6 +16,8 @@ from triton.cli.degrade import degrade_app
 from triton.cli.convert import convert_app
 from triton.cli.matrix import matrix_app
 from triton.cli.normalize import normalize_app
+from triton.cli.babble import babble_app
+from triton.cli.files import files_app
 
 
 app = typer.Typer(add_completion=False, help="Triton audio processing CLI")
@@ -25,6 +27,8 @@ app.add_typer(degrade_app, name="degrade")
 app.add_typer(convert_app, name="convert")
 app.add_typer(matrix_app, name="matrix")
 app.add_typer(normalize_app, name="normalize")
+app.add_typer(babble_app, name="babble")
+app.add_typer(files_app, name="files")
 
 
 @app.command()

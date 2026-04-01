@@ -1,6 +1,6 @@
 """Core audio processing utilities."""
 
-from triton.core.mixer import mix_at_snr
+from triton.core.mixer import mix_at_snr, mix_babble, mix_babble_from_segments
 from triton.core.signal import extract_envelope, bandpass_filter, to_mono_float32
 from triton.core.io import (
     load_audio,
@@ -35,10 +35,17 @@ from triton.core.project import (
     save_recent_projects,
     register_recent_project,
     list_project_files,
+    load_babble_talker_groups,
+    select_babble_talker_groups,
+    BabbleTalkerGroup,
     add_project_file,
     delete_project_file,
     rename_project_file,
     sanitize_filename,
+    load_file_labels,
+    save_file_labels,
+    set_file_label,
+    get_file_label,
 )
 from triton.core.pipeline_runtime import (
     PIPELINE_ACTIONS,
@@ -62,6 +69,8 @@ from triton.core.pipeline_matrix import (
 
 __all__ = [
     "mix_at_snr",
+    "mix_babble",
+    "mix_babble_from_segments",
     "extract_envelope",
     "bandpass_filter",
     "to_mono_float32",
@@ -96,10 +105,17 @@ __all__ = [
     "save_recent_projects",
     "register_recent_project",
     "list_project_files",
+    "load_babble_talker_groups",
+    "select_babble_talker_groups",
+    "BabbleTalkerGroup",
     "add_project_file",
     "delete_project_file",
     "rename_project_file",
     "sanitize_filename",
+    "load_file_labels",
+    "save_file_labels",
+    "set_file_label",
+    "get_file_label",
     "PIPELINE_ACTIONS",
     "PIPELINE_STEP_ORDER",
     "PIPELINE_DEFAULT_STEP",

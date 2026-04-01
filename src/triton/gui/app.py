@@ -47,9 +47,14 @@ from triton.core.project import (
 	register_recent_project,
 	save_project_pipelines,
 	update_project_spectrogram_settings,
+	load_babble_talker_groups,
+	load_file_labels,
+	set_file_label,
+	set_project_file_labels,
 )
 from triton.core.io import load_audio, write_sidecar
 from triton.core.spectrogram import compute_spectrogram, load_spectrogram, save_spectrogram
+from triton.degrade.noise_generator import generate_project_babble
 from triton.ingest.rss import RssSource
 
 
@@ -176,7 +181,11 @@ def _generate_file_spectrogram(audio_path: Path, project: Project) -> Path:
 	return out_path
 
 
-def _save_uploaded_project_files(project: Project, uploaded_files: list[object]) -> list[Path]:
+def _save_uploaded_project_files(
+	project: Project,
+	uploaded_files: list[object],
+	batch_label: str = "",
+) -> list[Path]:
 	saved_paths: list[Path] = []
 	with st.status("Importing files...", expanded=True) as status:
 		progress_bar = st.progress(0.0)
@@ -190,6 +199,18 @@ def _save_uploaded_project_files(project: Project, uploaded_files: list[object])
 			progress_bar.progress(progress)
 		status.update(label=f"Imported {len(saved_paths)} file(s)", state="complete")
 	
+	if batch_label.strip() and saved_paths:
+		set_project_file_labels(project.path, saved_paths, batch_label)
+		log_project_event(
+			project.path,
+			"files_labeled_batch",
+			{
+				"count": len(saved_paths),
+				"label": batch_label.strip(),
+				"files": [path.name for path in saved_paths],
+			},
+		)
+
 	if saved_paths:
 		log_project_event(
 			project.path,
@@ -314,14 +335,31 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 				accept_multiple_files=True,
 				key="project_file_upload",
 			)
+			batch_label = st.text_input(
+				"Apply one label to all imported files",
+				value="",
+				placeholder="e.g., bab-f1",
+				key="project_file_upload_label",
+			)
 			upload_submitted = st.form_submit_button("Import selected files", type="primary")
 
 		if upload_submitted:
 			if not uploaded_files:
 				st.error("Choose at least one file to import.")
 			else:
-				saved_paths = _save_uploaded_project_files(project, list(uploaded_files))
+				saved_paths = _save_uploaded_project_files(project, list(uploaded_files), batch_label=batch_label)
 				st.success(f"Imported {len(saved_paths)} file(s) and precomputed spectrograms.")
+				# Reset file browser selection state
+				st.session_state["project_file_upload"] = None
+				st.session_state["project_file_upload_label"] = ""
+				st.session_state.pop("selected_spectrogram_file", None)
+				st.session_state.pop("file_list_page", None)
+				# Clear form state
+				st.session_state.pop("project_file_upload_form", None)
+				# Clear all file checkbox states from previous imports
+				for key in list(st.session_state.keys()):
+					if key.startswith("import_checked_"):
+						st.session_state.pop(key, None)
 				st.rerun()
 
 	with count_col:
@@ -346,15 +384,34 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 	list_col, panel_col = st.columns([1.9, 1.1], gap="large")
 
 	with list_col:
-		search_col, sort_col = st.columns([3, 2])
-		search_text = search_col.text_input("Search files", value="", placeholder="Type a file name...")
-		sort_mode = sort_col.selectbox("Sort", options=["name", "size_desc", "size_asc"], format_func=lambda value: {
-			"name": "Name (A-Z)",
-			"size_desc": "Size (largest first)",
-			"size_asc": "Size (smallest first)",
-		}[value])
+		filter_row_col1, filter_row_col2, filter_row_col3 = st.columns([2, 2, 2])
+		
+		with filter_row_col1:
+			search_text = st.text_input("Search files", value="", placeholder="Type a file name...")
+		
+		with filter_row_col2:
+			# Get available labels for filtering
+			all_labels = load_file_labels(project.path)
+			available_labels = sorted(set(all_labels.values()))
+			label_filter = st.selectbox(
+				"Filter by label",
+				options=["(All)"] + available_labels,
+				format_func=lambda x: x if x == "(All)" else f"Label: {x}"
+			)
+		
+		with filter_row_col3:
+			sort_mode = st.selectbox("Sort", options=["name", "size_desc", "size_asc"], format_func=lambda value: {
+				"name": "Name (A-Z)",
+				"size_desc": "Size (largest first)",
+				"size_asc": "Size (smallest first)",
+			}[value])
 
+		# Apply filters
 		visible_files = [path for path in project_files if search_text.strip().lower() in path.name.lower()]
+		
+		if label_filter != "(All)":
+			visible_files = [f for f in visible_files if all_labels.get(f.name) == label_filter]
+		
 		if sort_mode == "size_desc":
 			visible_files = sorted(visible_files, key=lambda path: path.stat().st_size, reverse=True)
 		elif sort_mode == "size_asc":
@@ -374,7 +431,7 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 			page_files = visible_files[start_idx:end_idx]
 
 			# Table header
-			header_cols = st.columns([0.4, 2.5, 1.5, 1.0, 0.7, 0.7, 0.7])
+			header_cols = st.columns([0.4, 2.0, 1.5, 1.0, 1.2, 0.7, 0.7, 0.7])
 			with header_cols[0]:
 				st.caption("✓")
 			with header_cols[1]:
@@ -384,10 +441,12 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 			with header_cols[3]:
 				st.caption("**Type**")
 			with header_cols[4]:
-				st.caption("**View**")
+				st.caption("**Label**")
 			with header_cols[5]:
-				st.caption("**Rename**")
+				st.caption("**View**")
 			with header_cols[6]:
+				st.caption("**Rename**")
+			with header_cols[7]:
 				st.caption("**Delete**")
 
 			# Table rows
@@ -395,8 +454,9 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 				global_index = start_idx + index
 				spec_path = _spectrogram_path(file_path)
 				check_key = f"import_checked_{_pipeline_key(str(file_path))}"
+				file_label = all_labels.get(file_path.name, "")
 
-				row_cols = st.columns([0.4, 2.5, 1.5, 1.0, 0.7, 0.7, 0.7])
+				row_cols = st.columns([0.4, 2.0, 1.5, 1.0, 1.2, 0.7, 0.7, 0.7])
 
 				with row_cols[0]:
 					st.checkbox("Select file", key=check_key, label_visibility="collapsed")
@@ -411,6 +471,19 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 					st.caption(file_path.suffix.lower())
 
 				with row_cols[4]:
+					label_key = f"label_input_{_pipeline_key(str(file_path))}"
+					new_label = st.text_input(
+						"Set label",
+						value=file_label,
+						key=label_key,
+						label_visibility="collapsed",
+						placeholder="e.g., talker1"
+					)
+					if new_label != file_label:
+						set_file_label(project.path, file_path, new_label)
+						st.rerun()
+
+				with row_cols[5]:
 					if st.button("📊", key=f"spec_{global_index}", help="View spectrogram", use_container_width=True):
 						if not spec_path.exists():
 							try:
@@ -424,12 +497,12 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 							st.session_state["selected_spectrogram_file"] = str(file_path)
 							st.rerun()
 
-				with row_cols[5]:
+				with row_cols[6]:
 					if st.button("✏️", key=f"rename_{global_index}", help="Rename file", use_container_width=True):
 						st.session_state["rename_mode"] = global_index
 						st.rerun()
 
-				with row_cols[6]:
+				with row_cols[7]:
 					if st.button("🗑️", key=f"delete_{global_index}", help="Delete file", use_container_width=True):
 						_delete_project_file(file_path)
 						if spec_path.exists():
@@ -1198,7 +1271,7 @@ def _render_project_workspace(project: Project) -> None:
 			_clear_active_project()
 			st.rerun()
 
-	import_tab, ingest_tab, pipelines_tab, mix_tab, transcribe_tab, roadmap_tab = st.tabs(["Import", "Ingest RSS", "Pipelines", "Mix", "Transcribe", "Roadmap"])
+	import_tab, ingest_tab, pipelines_tab, mix_tab, babble_tab, transcribe_tab, roadmap_tab = st.tabs(["Manage and Explore Files", "Ingest RSS", "Pipelines", "Mix", "Babble", "Transcribe", "Roadmap"])
 
 	with import_tab:
 		metric_col1, metric_col2, metric_col3 = st.columns(3)
@@ -1213,6 +1286,55 @@ def _render_project_workspace(project: Project) -> None:
 		st.write(
 			"Imported files are stored in project raw storage and get spectrogram artifacts generated automatically."
 		)
+
+		# Label rename section
+		with st.expander("📋 Rename Labels", expanded=False):
+			st.write("Rename a label to apply the new name to all files that currently have that label.")
+			
+			all_labels_dict = load_file_labels(project.path)
+			existing_labels = sorted(set(label for label in all_labels_dict.values() if label))
+			
+			if not existing_labels:
+				st.info("No labels found. Label files using the table below or batch import labels.")
+			else:
+				col1, col2, col3 = st.columns([1.5, 1.5, 1])
+				
+				with col1:
+					old_label = st.selectbox(
+						"Select label to rename",
+						options=existing_labels,
+						key="rename_old_label"
+					)
+				
+				with col2:
+					new_label = st.text_input(
+						"New label name",
+						placeholder="e.g., bab-m1",
+						key="rename_new_label"
+					)
+				
+				with col3:
+					if st.button("Rename", key="apply_rename_label", use_container_width=True, type="primary"):
+						if new_label.strip() and new_label.strip() != old_label:
+							files_with_label = [
+								(file_path, label) for file_path, label in [(Path(f), all_labels_dict.get(f.name, "")) for f in project_files]
+								if label == old_label
+							]
+							
+							for file_path, _ in files_with_label:
+								set_file_label(project.path, file_path, new_label.strip())
+							
+							log_project_event(
+								project.path,
+								"label_renamed",
+								{"old_label": old_label, "new_label": new_label.strip(), "affected_files": len(files_with_label)},
+							)
+							st.success(f"Renamed label '{old_label}' to '{new_label.strip()}' for {len(files_with_label)} file(s)")
+							st.rerun()
+						elif new_label.strip() == old_label:
+							st.warning("New label is the same as the old label")
+						else:
+							st.error("Enter a new label name")
 
 		_render_file_library(project, project_files)
 
@@ -1290,6 +1412,193 @@ def _render_project_workspace(project: Project) -> None:
 						"noise_file": noise_meta["filename"],
 					},
 				)
+
+	with babble_tab:
+		st.markdown("### Babble Speech Generation")
+		st.write(
+			"Label files as bab-f1, bab-f2, bab-m1, bab-m2, etc. Files that share a label are concatenated into one talker before mixing."
+		)
+
+		babble_groups = load_babble_talker_groups(project.path)
+		if len(babble_groups) < 2:
+			st.info("Label at least two imported files with bab-f1, bab-m1, and similar labels to generate babble.")
+		else:
+			group_cols = st.columns(2)
+			with group_cols[0]:
+				st.markdown("#### Available Talker Groups")
+				for group in babble_groups:
+					st.caption(f"{group.label} ({group.sex}, {len(group.files)} file(s))")
+			with group_cols[1]:
+				st.markdown("#### Talker Counts")
+				num_talkers_default = min(len(babble_groups), max(2, len(babble_groups)))
+				# Guard against stale widget state from older runs where the minimum differed.
+				if "babble_num_talkers" in st.session_state:
+					st.session_state["babble_num_talkers"] = int(
+						max(2, min(len(babble_groups), int(st.session_state["babble_num_talkers"])))
+					)
+				num_talkers = st.number_input(
+					"Number of talkers",
+					min_value=2,
+					max_value=len(babble_groups),
+					value=int(num_talkers_default),
+					step=1,
+					key="babble_num_talkers",
+				)
+				use_split = st.checkbox(
+					"Set female and male talkers separately",
+					value=False,
+					key="babble_use_sex_split",
+				)
+				num_female_talkers = None
+				num_male_talkers = None
+				if use_split:
+					female_groups = [group for group in babble_groups if group.sex == "f"]
+					male_groups = [group for group in babble_groups if group.sex == "m"]
+					split_cols = st.columns(2)
+					with split_cols[0]:
+						num_female_talkers = st.number_input(
+							"Female talkers",
+							min_value=0,
+							max_value=len(female_groups),
+							value=min(len(female_groups), int(num_talkers) // 2),
+							step=1,
+							key="babble_num_female_talkers",
+						)
+					with split_cols[1]:
+						num_male_talkers = st.number_input(
+							"Male talkers",
+							min_value=0,
+							max_value=len(male_groups),
+							value=min(len(male_groups), int(num_talkers) - int(num_talkers) // 2),
+							step=1,
+							key="babble_num_male_talkers",
+						)
+
+				st.markdown("#### Mix Settings")
+				set1, set2, set3 = st.columns(3)
+				with set1:
+					target_rms = st.slider(
+						"Target RMS level",
+						min_value=0.01,
+						max_value=0.5,
+						value=0.1,
+						step=0.01,
+						help="RMS level to normalize each source file to before concatenating and mixing.",
+					)
+				with set2:
+					intended_length_seconds = st.number_input(
+						"Intended length (seconds)",
+						min_value=1.0,
+						max_value=3600.0,
+						value=30.0,
+						step=1.0,
+						help="Per-talker's concatenated length target. Extra files are skipped once reached.",
+					)
+				with set3:
+					peak_norm = st.checkbox(
+						"Peak normalize output",
+						value=True,
+						help="Rescale the final babble output to prevent clipping.",
+					)
+
+				mix_babble_button = st.button("Generate Babble", type="primary", key="mix_babble_button")
+
+				if mix_babble_button:
+					progress_bar = st.progress(0)
+					status_line = st.empty()
+					console_box = st.empty()
+					console_lines: list[str] = []
+
+					def _append_console(message: str, progress: int | None = None) -> None:
+						console_lines.append(message)
+						console_box.code("\n".join(console_lines[-12:]), language="text")
+						if progress is not None:
+							progress_bar.progress(max(0, min(100, int(progress))))
+						status_line.caption(message)
+
+					try:
+						result = generate_project_babble(
+							project.path,
+							sr=target_sr,
+							channel_mode=channel_mode,
+							num_talkers=int(num_talkers),
+							num_female_talkers=None if num_female_talkers is None else int(num_female_talkers),
+							num_male_talkers=None if num_male_talkers is None else int(num_male_talkers),
+							intended_length_seconds=float(intended_length_seconds),
+							target_rms=float(target_rms),
+							peak_normalize=bool(peak_norm),
+							progress_callback=_append_console,
+						)
+
+						if result.short_source_labels:
+							st.warning(
+								"Some talkers do not have enough unique source duration for the intended length: "
+								+ ", ".join(result.short_source_labels)
+								+ ". Their files were repeated randomly."
+							)
+						if result.unknown_duration_labels:
+							st.warning(
+								"Could not estimate duration for some files while planning: "
+								+ ", ".join(result.unknown_duration_labels)
+								+ ". Full selected files were loaded for those talkers."
+							)
+						if result.repeat_counts_by_label:
+							_append_console(
+								"Random repeats applied for short talkers: "
+								+ ", ".join(
+									f"{label} (+{count})" for label, count in sorted(result.repeat_counts_by_label.items())
+								),
+								progress=70,
+							)
+
+						_append_console("Encoding output WAV...", progress=90)
+						babble_bytes = _audio_bytes(result.audio, target_sr)
+						_append_console("Babble generation complete.", progress=100)
+
+						st.success(
+							f"Babble generated from {len(result.selected_groups)} talker groups "
+							f"({sum(1 for group in result.selected_groups if group.sex == 'f')} female, "
+							f"{sum(1 for group in result.selected_groups if group.sex == 'm')} male)."
+						)
+
+						st.markdown("#### Selected Talkers")
+						for group, files in zip(result.selected_groups, result.planned_group_files, strict=False):
+							st.caption(f"{group.label}: {', '.join(file_path.name for file_path in files)}")
+
+						st.markdown("### Babble Output")
+						st.audio(babble_bytes, format="audio/wav")
+						st.download_button(
+							label="Download babble",
+							data=babble_bytes,
+							file_name="triton_babble.wav",
+							mime="audio/wav",
+						)
+
+						log_project_event(
+							project.path,
+							"babble_generated",
+							{
+								"num_talkers": int(num_talkers),
+								"female_talkers": None if num_female_talkers is None else int(num_female_talkers),
+								"male_talkers": None if num_male_talkers is None else int(num_male_talkers),
+								"intended_length_seconds": float(intended_length_seconds),
+								"talker_labels": [group.label for group in result.selected_groups],
+								"talker_files": [
+									file_path.name
+									for files in result.planned_group_files
+									for file_path in files
+								],
+								"talker_repeats": result.repeat_counts_by_label,
+								"short_source_labels": result.short_source_labels,
+								"unknown_duration_labels": result.unknown_duration_labels,
+								"target_rms": float(target_rms),
+								"peak_normalize": bool(peak_norm),
+							},
+						)
+
+					except Exception as exc:
+						_append_console(f"Babble generation failed: {exc}", progress=100)
+						st.error(f"Babble generation failed: {exc}")
 
 	with transcribe_tab:
 		st.markdown("### Transcribe")

@@ -55,3 +55,50 @@ Generate babble noise from a folder containing one subfolder per talker.
 - `n_talkers`: Number of talkers to combine
 - `seed`: Optional random seed
 - `normalize`: Peak-normalize output to 0.99
+
+## ProjectBabbleResult
+
+Result metadata returned by `generate_project_babble`.
+
+**Fields**
+
+- `audio`: Generated babble waveform
+- `sample_rate`: Output sample rate
+- `selected_groups`: Selected babble talker groups from project labels
+- `planned_group_files`: Files actually used per talker after intended-length planning
+- `short_source_labels`: Talker labels that lacked enough unique duration
+- `unknown_duration_labels`: Talker labels where duration estimation failed
+- `repeat_counts_by_label`: Random repeat counts added per short talker
+
+## generate_project_babble
+
+Generate babble from project files labeled with `bab-fN` / `bab-mN` and return audio plus planning metadata.
+
+**Signature**
+
+`generate_project_babble(project_dir, sr, channel_mode, num_talkers, num_female_talkers=None, num_male_talkers=None, intended_length_seconds=30.0, target_rms=0.1, peak_normalize=True, seed=None, max_workers=None, progress_callback=None)`
+
+**Args**
+
+- `project_dir`: Project directory containing label metadata
+- `sr`: Output sample rate
+- `channel_mode`: `mono` or `stereo`
+- `num_talkers`: Total number of talker groups to mix
+- `num_female_talkers`: Optional female group count override
+- `num_male_talkers`: Optional male group count override
+- `intended_length_seconds`: Target per-talker concatenated duration
+- `target_rms`: RMS target applied per source segment before concatenation
+- `peak_normalize`: Peak-normalize final output to safe headroom
+- `seed`: Optional seed used for repeat/randomization decisions
+- `max_workers`: Optional parallel loading worker limit
+- `progress_callback`: Optional callback receiving `(message, percent)` updates
+
+**Returns**
+
+- `ProjectBabbleResult`
+
+**Notes**
+
+- This is the shared implementation used by both GUI and CLI babble workflows.
+- When source duration is short, segments are repeated randomly to meet intended length.
+- When intended length is already satisfied, extra files are skipped to reduce load time.

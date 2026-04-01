@@ -31,15 +31,28 @@ Each project stores config and data inside its own directory:
   metadata/
 ```
 
-## Import Tab
+## Manage and Explore Files Tab
 
-The Import tab is the default project workspace entry point for source files.
+The Manage and Explore Files tab is the default project workspace entry point for managing source files and their labels.
+
+### Import Files
 
 - import one or more audio files into project raw storage (`data/raw`)
+- optionally assign one label to the full upload batch during import
 - view files in a compact list with metadata
 - play audio inline per file
 - rename or remove files
 - open a precomputed spectrogram per file in the right-side spectrogram panel
+
+After importing files, the file browser selection and upload widget are automatically reset to allow for a clean next import.
+
+### Rename Labels
+
+Rename an existing label to apply the new name to all files that currently have that label. This is useful for:
+
+- correcting label typos across multiple files
+- reorganizing labels (e.g., renaming all `talker` labels to `bab-f1`)
+- preparing files for babble generation with consistent naming (e.g., `bab-f1`, `bab-m1`)
 
 Imported files automatically trigger spectrogram computation using project defaults from `triton.toml` (`[spectrogram]` section).
 
@@ -71,6 +84,36 @@ Mix speech and noise interactively:
 - preview result and download mixed output
 
 Inputs are normalized in-session to project audio settings before mixing.
+
+## Babble Tab
+
+Generate babble speech from labeled talker groups:
+
+- select the total number of talker groups to mix
+- optionally set female and male counts separately
+- optionally assign the same label to an uploaded batch in the Import tab
+- use labels such as `bab-f1`, `bab-f2`, `bab-m1`, and `bab-m2`
+- set an intended per-talker output length
+- normalize each source file to the target RMS before concatenating files for the same talker
+- optionally peak-normalize the mixed output to prevent clipping
+- monitor a progress bar and a live status console while babble is generated
+- download the generated babble for use in experiments
+
+If no sex split is provided, Triton balances female and male talkers as evenly as possible. When multiple files share a babble label, they are concatenated in filename order after RMS normalization.
+
+If source material for a selected talker is shorter than the intended length, Triton warns and randomly repeats that talker's files until target length is reached.
+
+Babble generation in the GUI and CLI both use the same shared core function in `triton.degrade.noise_generator`, so file selection, loading, and mixing behavior are consistent.
+
+Typical workflow:
+
+1. Import audio files in the Manage and Explore Files tab, optionally assigning a batch label
+2. Edit labels individually in the file table, or rename multiple labels at once using the "Rename Labels" panel
+3. Go to the Babble tab
+4. Review the available babble talker groups (labeled with `bab-f1`, `bab-m1`, etc.)
+5. Set the total number of talkers, then optionally set female and male counts
+6. Set intended length, then adjust target RMS and peak normalization settings
+7. Click "Generate Babble" and download the output
 
 ## Pipelines Tab
 
