@@ -178,19 +178,18 @@ def _generate_file_spectrogram(audio_path: Path, project: Project) -> Path:
 
 def _save_uploaded_project_files(project: Project, uploaded_files: list[object]) -> list[Path]:
 	saved_paths: list[Path] = []
-	progress_bar = st.progress(0, label="Importing files...")
-	status_text = st.empty()
+	with st.status("Importing files...", expanded=True) as status:
+		progress_bar = st.progress(0.0)
+		for idx, uploaded_file in enumerate(uploaded_files):
+			status.write(f"Importing: {uploaded_file.name}")
+			path = add_project_file(project.path, uploaded_file.name, uploaded_file.getvalue())
+			saved_paths.append(path)
+			_generate_file_spectrogram(path, project)
+			progress = (idx + 1) / len(uploaded_files)
+			status.update(label=f"Importing files... ({idx + 1}/{len(uploaded_files)})", state="running")
+			progress_bar.progress(progress)
+		status.update(label=f"Imported {len(saved_paths)} file(s)", state="complete")
 	
-	for idx, uploaded_file in enumerate(uploaded_files):
-		status_text.text(f"Importing: {uploaded_file.name}")
-		path = add_project_file(project.path, uploaded_file.name, uploaded_file.getvalue())
-		saved_paths.append(path)
-		_generate_file_spectrogram(path, project)
-		progress_bar.progress((idx + 1) / len(uploaded_files), label=f"Importing files... ({idx + 1}/{len(uploaded_files)})")
-	
-	progress_bar.empty()
-	status_text.empty()
-
 	if saved_paths:
 		log_project_event(
 			project.path,
@@ -204,21 +203,20 @@ def _save_uploaded_project_files(project: Project, uploaded_files: list[object])
 def _regenerate_all_project_spectrograms(project: Project, project_files: list[Path]) -> tuple[int, list[str]]:
 	updated = 0
 	errors: list[str] = []
-	progress_bar = st.progress(0, label="Regenerating spectrograms...")
-	status_text = st.empty()
-	
-	for idx, file_path in enumerate(project_files):
-		status_text.text(f"Processing: {file_path.name}")
-		try:
-			_generate_file_spectrogram(file_path, project)
-		except Exception as exc:
-			errors.append(f"{file_path.name}: {exc}")
-		else:
-			updated += 1
-		progress_bar.progress((idx + 1) / len(project_files), label=f"Regenerating spectrograms... ({idx + 1}/{len(project_files)})")
-	
-	progress_bar.empty()
-	status_text.empty()
+	with st.status("Regenerating spectrograms...", expanded=True) as status:
+		progress_bar = st.progress(0.0)
+		for idx, file_path in enumerate(project_files):
+			status.write(f"Processing: {file_path.name}")
+			try:
+				_generate_file_spectrogram(file_path, project)
+			except Exception as exc:
+				errors.append(f"{file_path.name}: {exc}")
+			else:
+				updated += 1
+			progress = (idx + 1) / len(project_files)
+			status.update(label=f"Regenerating spectrograms... ({idx + 1}/{len(project_files)})", state="running")
+			progress_bar.progress(progress)
+		status.update(label=f"Regenerated {updated} file(s)", state="complete")
 
 	log_project_event(
 		project.path,
@@ -401,7 +399,7 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 				row_cols = st.columns([0.4, 2.5, 1.5, 1.0, 0.7, 0.7, 0.7])
 
 				with row_cols[0]:
-					st.checkbox("", key=check_key, label_visibility="collapsed")
+					st.checkbox("Select file", key=check_key, label_visibility="collapsed")
 
 				with row_cols[1]:
 					st.caption(file_path.name)
@@ -689,36 +687,32 @@ def _render_rss_ingest_tab(project: Project) -> None:
 	if fetch_only:
 		return
 
-	download_progress = st.progress(0, label="Downloading episodes...")
-	download_status = st.empty()
-	
-	try:
-		downloaded_paths = source.download(selected_entries, raw_dir, overwrite=overwrite)
-	except Exception as exc:
-		st.error(f"RSS download failed: {exc}")
-		return
-
-	download_progress.empty()
-	download_status.empty()
+	with st.status("Downloading episodes...", expanded=True) as download_status:
+		try:
+			downloaded_paths = source.download(selected_entries, raw_dir, overwrite=overwrite)
+		except Exception as exc:
+			st.error(f"RSS download failed: {exc}")
+			return
 
 	generated_specs = 0
 	spec_errors: list[str] = []
-	spec_progress = st.progress(0, label="Generating spectrograms...")
-	spec_status = st.empty()
 	
-	for idx, path_str in enumerate(downloaded_paths):
-		file_path = Path(path_str)
-		spec_status.text(f"Processing: {file_path.name}")
-		try:
-			_generate_file_spectrogram(file_path, project)
-		except Exception as exc:
-			spec_errors.append(f"{file_path.name}: {exc}")
-		else:
-			generated_specs += 1
-		spec_progress.progress((idx + 1) / len(downloaded_paths), label=f"Generating spectrograms... ({idx + 1}/{len(downloaded_paths)})")
-	
-	spec_progress.empty()
-	spec_status.empty()
+	if downloaded_paths:
+		with st.status("Generating spectrograms...", expanded=True) as spec_status:
+			spec_progress_bar = st.progress(0.0)
+			for idx, path_str in enumerate(downloaded_paths):
+				file_path = Path(path_str)
+				spec_status.write(f"Processing: {file_path.name}")
+				try:
+					_generate_file_spectrogram(file_path, project)
+				except Exception as exc:
+					spec_errors.append(f"{file_path.name}: {exc}")
+				else:
+					generated_specs += 1
+				spec_progress_val = (idx + 1) / len(downloaded_paths)
+				spec_status.update(label=f"Generating spectrograms... ({idx + 1}/{len(downloaded_paths)})", state="running")
+				spec_progress_bar.progress(spec_progress_val)
+			spec_status.update(label=f"Generated {generated_specs} spectrogram(s)", state="complete")
 
 	log_project_event(
 		project.path,
