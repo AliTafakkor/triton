@@ -1,7 +1,13 @@
 from pathlib import Path
 from typing import Callable
+import csv
 import streamlit as st
 from triton.core.project import Project
+from triton.core.pipeline_matrix import (
+	generate_matrix_csv,
+	parse_parameter_specs,
+	run_matrix_csv,
+)
 
 def _hero(project: Project | None) -> None:
     status = "No active project" if project is None else f"Active project: {project.name}"
@@ -95,3 +101,206 @@ def _render_project_launcher(
             else:
                 st.success(f"Opened {project_dir.name}")
                 st.rerun()
+
+
+def _render_matrix_tab(
+    project: Project,
+    project_files: list[Path],
+    load_pipelines: Callable,
+    log_event: Callable,
+    new_run_id: Callable,
+) -> None:
+    """Render the Pipeline Matrix tab for parameter sweeps."""
+    st.markdown("### Pipeline Matrix")
+    st.write(
+        "Generate and run parameter sweeps across multiple files. Define parameter combinations, generate a CSV, then execute the matrix."
+    )
+
+    pipelines = load_pipelines(project)
+    pipeline_names = [p.name for p in pipelines]
+
+    if not pipelines:
+        st.info("No pipelines yet. Create one in the Pipelines tab first.")
+        return
+
+    gen_col, run_col = st.tabs(["Generate Matrix", "Run Matrix"])
+
+    with gen_col:
+        st.markdown("#### Generate Parameter Matrix")
+        st.write(
+            "Define parameter combinations and select files to create a matrix CSV that can be executed in batch."
+        )
+
+        with st.form("generate_matrix_form"):
+            selected_pipeline = st.selectbox(
+                "Select pipeline",
+                options=pipeline_names,
+                key="matrix_gen_pipeline",
+            )
+
+            st.markdown("##### Parameter specifications")
+            st.caption("Example: 0.target_peak=0.5,0.8 or 0.noise_db=-20,-10")
+
+            param_count = st.number_input(
+                "Number of parameter specs",
+                min_value=0,
+                max_value=10,
+                value=1,
+                key="matrix_param_count",
+            )
+
+            param_specs = []
+            for i in range(int(param_count)):
+                spec = st.text_input(
+                    f"Parameter {i + 1}",
+                    placeholder="step.option=v1,v2,v3",
+                    key=f"matrix_param_{i}",
+                )
+                if spec.strip():
+                    param_specs.append(spec)
+
+            st.markdown("##### Files to include")
+            selected_files = st.multiselect(
+                "Select files for matrix",
+                options=[p.name for p in project_files],
+                default=[p.name for p in project_files[:2]] if project_files else [],
+                key="matrix_gen_files",
+            )
+
+            output_csv_name = st.text_input(
+                "Output CSV filename",
+                value="matrix.csv",
+                key="matrix_output_name",
+            )
+
+            gen_submitted = st.form_submit_button("Generate Matrix CSV", type="primary")
+
+        if gen_submitted:
+            if not selected_pipeline:
+                st.error("Select a pipeline.")
+            elif not selected_files:
+                st.error("Select at least one file.")
+            elif not param_specs:
+                st.error("Define at least one parameter spec.")
+            else:
+                try:
+                    pipeline = next(p for p in pipelines if p.name == selected_pipeline)
+                    output_csv = project.path / output_csv_name
+                    
+                    with st.spinner(f"Generating matrix CSV with {len(param_specs)} parameter(s) and {len(selected_files)} file(s)..."):
+                        total_rows = generate_matrix_csv(
+                            project,
+                            pipeline,
+                            output_csv,
+                            param_specs,
+                            selected_files,
+                        )
+
+                    st.success(f"Generated matrix with {total_rows} row(s).")
+                    st.caption(f"Saved to: {output_csv}")
+
+                    with open(output_csv, "r") as f:
+                        csv_data = f.read()
+                        st.download_button(
+                            label="Download CSV",
+                            data=csv_data,
+                            file_name=output_csv_name,
+                            mime="text/csv",
+                        )
+
+                    log_event(
+                        project.path,
+                        "matrix_csv_generated",
+                        {
+                            "pipeline": selected_pipeline,
+                            "total_rows": total_rows,
+                            "parameters": len(param_specs),
+                            "files": len(selected_files),
+                        },
+                    )
+
+                except ValueError as e:
+                    st.error(f"Invalid parameter spec: {e}")
+                except Exception as e:
+                    st.error(f"Could not generate matrix: {e}")
+
+    with run_col:
+        st.markdown("#### Run Matrix from CSV")
+        st.write("Upload a matrix CSV file and execute it to run the pipeline with all parameter combinations.")
+
+        with st.form("run_matrix_form"):
+            run_pipeline = st.selectbox(
+                "Select pipeline",
+                options=pipeline_names,
+                key="matrix_run_pipeline",
+            )
+
+            csv_upload = st.file_uploader(
+                "Upload matrix CSV",
+                type=["csv"],
+                key="matrix_csv_upload",
+            )
+
+            custom_run_id = st.text_input(
+                "Run ID (optional, auto-generated if blank)",
+                key="matrix_custom_run_id",
+            )
+
+            run_submitted = st.form_submit_button("Execute Matrix", type="primary")
+
+        if run_submitted:
+            if not run_pipeline:
+                st.error("Select a pipeline.")
+            elif csv_upload is None:
+                st.error("Upload a matrix CSV file.")
+            else:
+                try:
+                    pipeline = next(p for p in pipelines if p.name == run_pipeline)
+                    run_id = custom_run_id.strip() if custom_run_id.strip() else new_run_id()
+                    
+                    # Save uploaded CSV temporarily
+                    temp_csv = project.path / ".matrix_temp.csv"
+                    with open(temp_csv, "wb") as f:
+                        f.write(csv_upload.getbuffer())
+
+                    with st.spinner(f"Executing matrix on pipeline '{run_pipeline}' with {run_id}..."):
+                        successes, errors, base_run_dir = run_matrix_csv(
+                            project,
+                            pipeline,
+                            temp_csv,
+                            run_id,
+                        )
+
+                    # Clean up temp file
+                    temp_csv.unlink(missing_ok=True)
+
+                    if successes:
+                        st.success(f"Completed {len(successes)} row(s) successfully.")
+                        st.caption(f"Run output folder: {base_run_dir}")
+                        with st.expander("View successful outputs"):
+                            for output in successes:
+                                st.caption(str(output))
+
+                    if errors:
+                        st.warning(f"{len(errors)} row(s) had errors:")
+                        with st.expander("View errors"):
+                            for error in errors:
+                                st.caption(error)
+
+                    log_event(
+                        project.path,
+                        "matrix_run_completed",
+                        {
+                            "pipeline": run_pipeline,
+                            "run_id": run_id,
+                            "succeeded": len(successes),
+                            "failed": len(errors),
+                        },
+                    )
+
+                except FileNotFoundError as e:
+                    st.error(f"File error: {e}")
+                except ValueError as e:
+                    st.error(f"CSV format error: {e}")
+                except Exception as e:
+                    st.error(f"Could not run matrix: {e}")

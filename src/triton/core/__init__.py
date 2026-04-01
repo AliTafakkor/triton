@@ -39,6 +39,25 @@ from triton.core.project import (
     rename_project_file,
     sanitize_filename,
 )
+from triton.core.pipeline_runtime import (
+    PIPELINE_ACTIONS,
+    PIPELINE_STEP_ORDER,
+    PIPELINE_DEFAULT_STEP,
+    pipeline_action_label,
+    default_step_options,
+    pipeline_key,
+    pipeline_output_dir,
+    pipeline_run_dir,
+    new_pipeline_run_id,
+    apply_pipeline_step,
+    run_pipeline_on_file,
+)
+from triton.core.pipeline_matrix import (
+    MATRIX_FILE_COLUMN,
+    parse_parameter_specs,
+    generate_matrix_csv,
+    run_matrix_csv,
+)
 
 __all__ = [
     "mix_at_snr",
@@ -79,4 +98,19 @@ __all__ = [
     "delete_project_file",
     "rename_project_file",
     "sanitize_filename",
+    "PIPELINE_ACTIONS",
+    "PIPELINE_STEP_ORDER",
+    "PIPELINE_DEFAULT_STEP",
+    "pipeline_action_label",
+    "default_step_options",
+    "pipeline_key",
+    "pipeline_output_dir",
+    "pipeline_run_dir",
+    "new_pipeline_run_id",
+    "apply_pipeline_step",
+    "run_pipeline_on_file",
+    "MATRIX_FILE_COLUMN",
+    "parse_parameter_specs",
+    "generate_matrix_csv",
+    "run_matrix_csv",
 ]

@@ -6,6 +6,8 @@ Triton is a modular audio utility designed to standardize stimuli preparation an
 ## Product Direction
 Triton should evolve toward a project-centric workflow. Instead of treating every command as a one-off file transform, the system should organize work around a project that defines the audio contract for everything inside it.
 
+Triton supports **Pipeline Matrix** runs: define a pipeline once, then sweep across multiple files and parameter combinations in a single reproducible batch. Generate a CSV of file × parameter combinations and run them all at once, with each row producing isolated outputs for easy comparison and aggregation.
+
 In that model, a user starts by creating a project and choosing settings such as target sampling rate, channel format (mono or stereo), storage paths, and default processing behavior. After that, any audio brought into the project is normalized to the project specification automatically. The goal is to make downstream operations predictable: degradation, transcription, conversion, mixing, and ingest should all operate on a consistent internal representation.
 
 ## Proposed Workflow
@@ -91,6 +93,7 @@ triton transcribe local --project my-project --input asset:moth_episode_03
 3. Add a project-aware import command that converts files to canonical settings.
 4. Refactor ingest to write into projects through the same import pipeline.
 5. Update degrade and transcribe commands to accept `--project` and operate on normalized assets.
+6. Support pipeline matrix generation and execution for parameter sweeps and batch processing.
 
 ## Core Components
 The Engine (/core): The foundational Python API for audio math. Contains logic for RMS-based SNR mixing, vocoding, and filtering. Designed to be imported directly into other simulation or modeling projects to ensure consistent signal processing.
