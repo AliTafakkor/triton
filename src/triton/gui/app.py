@@ -349,6 +349,17 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 			else:
 				saved_paths = _save_uploaded_project_files(project, list(uploaded_files), batch_label=batch_label)
 				st.success(f"Imported {len(saved_paths)} file(s) and precomputed spectrograms.")
+				# Reset file browser selection state
+				st.session_state["project_file_upload"] = None
+				st.session_state["project_file_upload_label"] = ""
+				st.session_state.pop("selected_spectrogram_file", None)
+				st.session_state.pop("file_list_page", None)
+				# Clear form state
+				st.session_state.pop("project_file_upload_form", None)
+				# Clear all file checkbox states from previous imports
+				for key in list(st.session_state.keys()):
+					if key.startswith("import_checked_"):
+						st.session_state.pop(key, None)
 				st.rerun()
 
 	with count_col:
@@ -1260,7 +1271,7 @@ def _render_project_workspace(project: Project) -> None:
 			_clear_active_project()
 			st.rerun()
 
-	import_tab, ingest_tab, pipelines_tab, mix_tab, babble_tab, transcribe_tab, roadmap_tab = st.tabs(["Import", "Ingest RSS", "Pipelines", "Mix", "Babble", "Transcribe", "Roadmap"])
+	import_tab, ingest_tab, pipelines_tab, mix_tab, babble_tab, transcribe_tab, roadmap_tab = st.tabs(["Manage and Explore Files", "Ingest RSS", "Pipelines", "Mix", "Babble", "Transcribe", "Roadmap"])
 
 	with import_tab:
 		metric_col1, metric_col2, metric_col3 = st.columns(3)
@@ -1275,6 +1286,55 @@ def _render_project_workspace(project: Project) -> None:
 		st.write(
 			"Imported files are stored in project raw storage and get spectrogram artifacts generated automatically."
 		)
+
+		# Label rename section
+		with st.expander("📋 Rename Labels", expanded=False):
+			st.write("Rename a label to apply the new name to all files that currently have that label.")
+			
+			all_labels_dict = load_file_labels(project.path)
+			existing_labels = sorted(set(label for label in all_labels_dict.values() if label))
+			
+			if not existing_labels:
+				st.info("No labels found. Label files using the table below or batch import labels.")
+			else:
+				col1, col2, col3 = st.columns([1.5, 1.5, 1])
+				
+				with col1:
+					old_label = st.selectbox(
+						"Select label to rename",
+						options=existing_labels,
+						key="rename_old_label"
+					)
+				
+				with col2:
+					new_label = st.text_input(
+						"New label name",
+						placeholder="e.g., bab-m1",
+						key="rename_new_label"
+					)
+				
+				with col3:
+					if st.button("Rename", key="apply_rename_label", use_container_width=True, type="primary"):
+						if new_label.strip() and new_label.strip() != old_label:
+							files_with_label = [
+								(file_path, label) for file_path, label in [(Path(f), all_labels_dict.get(f.name, "")) for f in project_files]
+								if label == old_label
+							]
+							
+							for file_path, _ in files_with_label:
+								set_file_label(project.path, file_path, new_label.strip())
+							
+							log_project_event(
+								project.path,
+								"label_renamed",
+								{"old_label": old_label, "new_label": new_label.strip(), "affected_files": len(files_with_label)},
+							)
+							st.success(f"Renamed label '{old_label}' to '{new_label.strip()}' for {len(files_with_label)} file(s)")
+							st.rerun()
+						elif new_label.strip() == old_label:
+							st.warning("New label is the same as the old label")
+						else:
+							st.error("Enter a new label name")
 
 		_render_file_library(project, project_files)
 
@@ -1360,8 +1420,8 @@ def _render_project_workspace(project: Project) -> None:
 		)
 
 		babble_groups = load_babble_talker_groups(project.path)
-		if not babble_groups:
-			st.info("Label some imported files with bab-f1, bab-m1, and similar labels to generate babble.")
+		if len(babble_groups) < 2:
+			st.info("Label at least two imported files with bab-f1, bab-m1, and similar labels to generate babble.")
 		else:
 			group_cols = st.columns(2)
 			with group_cols[0]:
