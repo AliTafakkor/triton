@@ -10,7 +10,7 @@ import librosa
 import numpy as np
 
 from triton.core.conversion import requantize
-from triton.core.io import load_audio, normalize_peak, save_audio
+from triton.core.io import load_audio, normalize_peak, normalize_rms, save_audio
 from triton.core.project import Pipeline, Project
 from triton.degrade.time_compression import compress_time
 from triton.degrade.vocoder import noise_vocode
@@ -18,6 +18,7 @@ from triton.degrade.vocoder import noise_vocode
 
 PIPELINE_ACTIONS: dict[str, str] = {
 	"normalize": "Peak normalize",
+	"normalize_rms": "RMS normalize",
 	"resample_project": "Resample to project sample rate",
 	"to_mono": "Convert to mono",
 	"to_stereo": "Convert to stereo",
@@ -37,6 +38,8 @@ def pipeline_action_label(action: str) -> str:
 def default_step_options(step: str, project_sr: int) -> dict[str, object]:
 	if step == "normalize":
 		return {"target_peak": 0.99}
+	if step == "normalize_rms":
+		return {"target_rms": 0.1}
 	if step == "resample_project":
 		return {"target_mode": "project", "custom_sr": int(project_sr)}
 	if step == "requantize_16":
@@ -115,6 +118,11 @@ def apply_pipeline_step(
 		target_peak = float(options.get("target_peak", 0.99))
 		target_peak = min(max(target_peak, 0.01), 1.0)
 		return normalize_peak(audio, target=target_peak), sr
+
+	if step == "normalize_rms":
+		target_rms = float(options.get("target_rms", 0.1))
+		target_rms = min(max(target_rms, 0.001), 1.0)
+		return normalize_rms(audio, target=target_rms), sr
 
 	if step == "resample_project":
 		target_mode = str(options.get("target_mode", "project"))
