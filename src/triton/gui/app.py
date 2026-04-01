@@ -798,6 +798,17 @@ def _render_step_options_editor(step: str, index: int, project: Project) -> dict
 		)
 		return {"target_peak": float(target_peak)}
 
+	if step == "normalize_rms":
+		target_rms = st.slider(
+			"Target RMS amplitude",
+			min_value=0.01,
+			max_value=1.0,
+			value=float(st.session_state.get(f"pipeline_step_target_rms_{index}", 0.1)),
+			step=0.01,
+			key=f"pipeline_step_target_rms_{index}",
+		)
+		return {"target_rms": float(target_rms)}
+
 	if step == "resample_project":
 		target_mode = st.selectbox(
 			"Target sample rate",
