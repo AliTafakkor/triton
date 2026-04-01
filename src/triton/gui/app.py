@@ -327,7 +327,6 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 		return
 
 	selected_spectrogram = st.session_state.get("selected_spectrogram_file")
-	selected_count = 0
 
 	st.markdown("### Imported Files")
 	list_col, panel_col = st.columns([1.9, 1.1], gap="large")
@@ -350,64 +349,100 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 		if not visible_files:
 			st.info("No files match your search.")
 		else:
-			for index, file_path in enumerate(visible_files):
+			# Pagination
+			items_per_page = 15
+			total_pages = (len(visible_files) + items_per_page - 1) // items_per_page
+			current_page = st.session_state.get("file_list_page", 0)
+			current_page = min(current_page, total_pages - 1)
+
+			start_idx = current_page * items_per_page
+			end_idx = start_idx + items_per_page
+			page_files = visible_files[start_idx:end_idx]
+
+			# Table header
+			header_cols = st.columns([0.4, 2.5, 1.5, 1.0, 0.7, 0.7, 0.7])
+			with header_cols[0]:
+				st.caption("✓")
+			with header_cols[1]:
+				st.caption("**File Name**")
+			with header_cols[2]:
+				st.caption("**Size**")
+			with header_cols[3]:
+				st.caption("**Type**")
+			with header_cols[4]:
+				st.caption("**View**")
+			with header_cols[5]:
+				st.caption("**Rename**")
+			with header_cols[6]:
+				st.caption("**Delete**")
+
+			# Table rows
+			for index, file_path in enumerate(page_files):
+				global_index = start_idx + index
 				spec_path = _spectrogram_path(file_path)
 				check_key = f"import_checked_{_pipeline_key(str(file_path))}"
-				with st.container(border=True):
-					check_col, name_col, player_col, spec_col, ren_col, del_col = st.columns([0.4, 2.5, 3.2, 0.7, 0.7, 0.7])
-					with check_col:
-						checked = st.checkbox("Select file", key=check_key, label_visibility="collapsed")
-						if checked:
-							selected_count += 1
-					with name_col:
-						new_name = st.text_input(
-							"Rename file",
-							value=file_path.name,
-							key=f"rename_input_{index}",
-							label_visibility="collapsed",
-						)
-					with player_col:
-						st.audio(str(file_path), format="audio/wav")
-					with spec_col:
-						if st.button("📊", key=f"list_spec_{index}", help="View spectrogram", use_container_width=True):
-							if not spec_path.exists():
-								try:
-									_generate_file_spectrogram(file_path, project)
-								except Exception as exc:
-									st.error(f"Could not generate spectrogram for {file_path.name}: {exc}")
-								else:
-									st.session_state["selected_spectrogram_file"] = str(file_path)
-									st.rerun()
+
+				row_cols = st.columns([0.4, 2.5, 1.5, 1.0, 0.7, 0.7, 0.7])
+
+				with row_cols[0]:
+					st.checkbox("", key=check_key, label_visibility="collapsed")
+
+				with row_cols[1]:
+					st.caption(file_path.name)
+
+				with row_cols[2]:
+					st.caption(_format_file_size(file_path.stat().st_size))
+
+				with row_cols[3]:
+					st.caption(file_path.suffix.lower())
+
+				with row_cols[4]:
+					if st.button("📊", key=f"spec_{global_index}", help="View spectrogram", use_container_width=True):
+						if not spec_path.exists():
+							try:
+								_generate_file_spectrogram(file_path, project)
+							except Exception as exc:
+								st.error(f"Could not generate spectrogram for {file_path.name}: {exc}")
 							else:
 								st.session_state["selected_spectrogram_file"] = str(file_path)
 								st.rerun()
-					with ren_col:
-						if st.button("✏️", key=f"rename_btn_{index}", help="Rename file", use_container_width=True):
-							try:
-								renamed = _rename_project_file(file_path, new_name)
-							except Exception as exc:
-								st.error(f"Could not rename {file_path.name}: {exc}")
-							else:
-								if spec_path.exists():
-									_spectrogram_path(file_path).rename(_spectrogram_path(renamed))
-								if st.session_state.get("selected_spectrogram_file") == str(file_path):
-									st.session_state["selected_spectrogram_file"] = str(renamed)
-								st.rerun()
-					with del_col:
-						if st.button("🗑️", key=f"remove_file_{index}", help="Remove file", use_container_width=True):
-							_delete_project_file(file_path)
-							if spec_path.exists():
-								spec_path.unlink()
-							if st.session_state.get("selected_spectrogram_file") == str(file_path):
-								st.session_state.pop("selected_spectrogram_file", None)
-							st.session_state.pop(check_key, None)
+						else:
+							st.session_state["selected_spectrogram_file"] = str(file_path)
 							st.rerun()
 
-					line2_path_col, line2_details_col = st.columns([7, 3])
-					with line2_path_col:
-						st.caption(str(file_path))
-					with line2_details_col:
-						st.caption(f"{_format_file_size(file_path.stat().st_size)} | {file_path.suffix.lower()}")
+				with row_cols[5]:
+					if st.button("✏️", key=f"rename_{global_index}", help="Rename file", use_container_width=True):
+						st.session_state["rename_mode"] = global_index
+						st.rerun()
+
+				with row_cols[6]:
+					if st.button("🗑️", key=f"delete_{global_index}", help="Delete file", use_container_width=True):
+						_delete_project_file(file_path)
+						if spec_path.exists():
+							spec_path.unlink()
+						if st.session_state.get("selected_spectrogram_file") == str(file_path):
+							st.session_state.pop("selected_spectrogram_file", None)
+						st.session_state.pop(check_key, None)
+						st.rerun()
+
+			# Pagination controls
+			if total_pages > 1:
+				pagination_cols = st.columns([1, 1, 1, 1])
+				with pagination_cols[0]:
+					if st.button("⬅ Previous", key="prev_page", use_container_width=True, disabled=current_page == 0):
+						st.session_state["file_list_page"] = max(0, current_page - 1)
+						st.rerun()
+
+				with pagination_cols[1]:
+					st.caption(f"Page {current_page + 1} of {total_pages}")
+
+				with pagination_cols[2]:
+					if st.button("Next ➡", key="next_page", use_container_width=True, disabled=current_page >= total_pages - 1):
+						st.session_state["file_list_page"] = min(total_pages - 1, current_page + 1)
+						st.rerun()
+
+				with pagination_cols[3]:
+					st.caption(f"Showing {len(page_files)} of {len(visible_files)} file(s)")
 
 	with panel_col:
 		with st.container(border=True):
@@ -477,8 +512,6 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 								width="stretch",
 								config={"scrollZoom": True, "displaylogo": False},
 							)
-
-	st.caption(f"Selected in list: {selected_count}")
 
 
 def _parse_episode_published_date(published: str | None) -> date | None:
