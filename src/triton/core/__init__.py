@@ -9,6 +9,7 @@ from triton.core.io import (
     iter_audio_files,
     iter_source_audio,
     normalize_peak,
+    normalize_rms,
     rms,
     SUPPORTED_EXTS,
 )
@@ -70,6 +71,7 @@ __all__ = [
     "iter_audio_files",
     "iter_source_audio",
     "normalize_peak",
+    "normalize_rms",
     "rms",
     "SUPPORTED_EXTS",
     "to_mono",

@@ -10,6 +10,10 @@ Triton supports **Pipeline Matrix** runs: define a pipeline once, then sweep acr
 
 In that model, a user starts by creating a project and choosing settings such as target sampling rate, channel format (mono or stereo), storage paths, and default processing behavior. After that, any audio brought into the project is normalized to the project specification automatically. The goal is to make downstream operations predictable: degradation, transcription, conversion, mixing, and ingest should all operate on a consistent internal representation.
 
+Triton provides multiple normalization strategies:
+- **Peak normalization**: Scale to target peak amplitude (~0.99) for safety headroom
+- **RMS normalization**: Scale to target loudness/energy (duration-independent), ideal for noise mixing and speech processing where consistent SNR is critical
+
 ## Proposed Workflow
 1. Create a project.
 2. Save project settings, including sample rate, mono/stereo policy, and output layout.
