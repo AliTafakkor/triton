@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 import soundfile as sf
 import streamlit as st
 
-from triton.core.mixer import mix_at_snr, mix_babble_from_segments
+from triton.core.mixer import mix_at_snr
 from triton.core.pipeline_runtime import (
 	PIPELINE_ACTIONS,
 	PIPELINE_DEFAULT_STEP,
@@ -48,13 +48,13 @@ from triton.core.project import (
 	save_project_pipelines,
 	update_project_spectrogram_settings,
 	load_babble_talker_groups,
-	select_babble_talker_groups,
 	load_file_labels,
 	set_file_label,
 	set_project_file_labels,
 )
 from triton.core.io import load_audio, write_sidecar
 from triton.core.spectrogram import compute_spectrogram, load_spectrogram, save_spectrogram
+from triton.degrade.noise_generator import generate_project_babble
 from triton.ingest.rss import RssSource
 
 
@@ -1431,6 +1431,11 @@ def _render_project_workspace(project: Project) -> None:
 			with group_cols[1]:
 				st.markdown("#### Talker Counts")
 				num_talkers_default = min(len(babble_groups), max(2, len(babble_groups)))
+				# Guard against stale widget state from older runs where the minimum differed.
+				if "babble_num_talkers" in st.session_state:
+					st.session_state["babble_num_talkers"] = int(
+						max(2, min(len(babble_groups), int(st.session_state["babble_num_talkers"])))
+					)
 				num_talkers = st.number_input(
 					"Number of talkers",
 					min_value=2,
@@ -1470,7 +1475,7 @@ def _render_project_workspace(project: Project) -> None:
 						)
 
 				st.markdown("#### Mix Settings")
-				set1, set2 = st.columns(2)
+				set1, set2, set3 = st.columns(3)
 				with set1:
 					target_rms = st.slider(
 						"Target RMS level",
@@ -1481,6 +1486,15 @@ def _render_project_workspace(project: Project) -> None:
 						help="RMS level to normalize each source file to before concatenating and mixing.",
 					)
 				with set2:
+					intended_length_seconds = st.number_input(
+						"Intended length (seconds)",
+						min_value=1.0,
+						max_value=3600.0,
+						value=30.0,
+						step=1.0,
+						help="Per-talker's concatenated length target. Extra files are skipped once reached.",
+					)
+				with set3:
 					peak_norm = st.checkbox(
 						"Peak normalize output",
 						value=True,
@@ -1490,67 +1504,101 @@ def _render_project_workspace(project: Project) -> None:
 				mix_babble_button = st.button("Generate Babble", type="primary", key="mix_babble_button")
 
 				if mix_babble_button:
-					with st.spinner("Loading labeled talker files and building babble..."):
-						try:
-							selected_groups = select_babble_talker_groups(
-								project.path,
-								num_talkers=int(num_talkers),
-								num_female_talkers=None if num_female_talkers is None else int(num_female_talkers),
-								num_male_talkers=None if num_male_talkers is None else int(num_male_talkers),
+					progress_bar = st.progress(0)
+					status_line = st.empty()
+					console_box = st.empty()
+					console_lines: list[str] = []
+
+					def _append_console(message: str, progress: int | None = None) -> None:
+						console_lines.append(message)
+						console_box.code("\n".join(console_lines[-12:]), language="text")
+						if progress is not None:
+							progress_bar.progress(max(0, min(100, int(progress))))
+						status_line.caption(message)
+
+					try:
+						result = generate_project_babble(
+							project.path,
+							sr=target_sr,
+							channel_mode=channel_mode,
+							num_talkers=int(num_talkers),
+							num_female_talkers=None if num_female_talkers is None else int(num_female_talkers),
+							num_male_talkers=None if num_male_talkers is None else int(num_male_talkers),
+							intended_length_seconds=float(intended_length_seconds),
+							target_rms=float(target_rms),
+							peak_normalize=bool(peak_norm),
+							progress_callback=_append_console,
+						)
+
+						if result.short_source_labels:
+							st.warning(
+								"Some talkers do not have enough unique source duration for the intended length: "
+								+ ", ".join(result.short_source_labels)
+								+ ". Their files were repeated randomly."
+							)
+						if result.unknown_duration_labels:
+							st.warning(
+								"Could not estimate duration for some files while planning: "
+								+ ", ".join(result.unknown_duration_labels)
+								+ ". Full selected files were loaded for those talkers."
+							)
+						if result.repeat_counts_by_label:
+							_append_console(
+								"Random repeats applied for short talkers: "
+								+ ", ".join(
+									f"{label} (+{count})" for label, count in sorted(result.repeat_counts_by_label.items())
+								),
+								progress=70,
 							)
 
-							talker_segments: list[list[np.ndarray]] = []
-							for group in selected_groups:
-								group_segments: list[np.ndarray] = []
-								for file_path in group.files:
-									audio, sr = load_audio(file_path, sr=None, mono=False)
-									audio = _resample_audio(audio, sr, target_sr)
-									audio = _convert_channels(audio, channel_mode)
-									group_segments.append(audio)
-								talker_segments.append(group_segments)
+						_append_console("Encoding output WAV...", progress=90)
+						babble_bytes = _audio_bytes(result.audio, target_sr)
+						_append_console("Babble generation complete.", progress=100)
 
-							babble = mix_babble_from_segments(
-								talker_segments,
-								target_rms=float(target_rms),
-								peak_normalize=bool(peak_norm),
-							)
-							babble_bytes = _audio_bytes(babble, target_sr)
+						st.success(
+							f"Babble generated from {len(result.selected_groups)} talker groups "
+							f"({sum(1 for group in result.selected_groups if group.sex == 'f')} female, "
+							f"{sum(1 for group in result.selected_groups if group.sex == 'm')} male)."
+						)
 
-							st.success(
-								f"Babble generated from {len(selected_groups)} talker groups "
-								f"({sum(1 for group in selected_groups if group.sex == 'f')} female, "
-								f"{sum(1 for group in selected_groups if group.sex == 'm')} male)."
-							)
+						st.markdown("#### Selected Talkers")
+						for group, files in zip(result.selected_groups, result.planned_group_files, strict=False):
+							st.caption(f"{group.label}: {', '.join(file_path.name for file_path in files)}")
 
-							st.markdown("#### Selected Talkers")
-							for group in selected_groups:
-								st.caption(f"{group.label}: {', '.join(file_path.name for file_path in group.files)}")
+						st.markdown("### Babble Output")
+						st.audio(babble_bytes, format="audio/wav")
+						st.download_button(
+							label="Download babble",
+							data=babble_bytes,
+							file_name="triton_babble.wav",
+							mime="audio/wav",
+						)
 
-							st.markdown("### Babble Output")
-							st.audio(babble_bytes, format="audio/wav")
-							st.download_button(
-								label="Download babble",
-								data=babble_bytes,
-								file_name="triton_babble.wav",
-								mime="audio/wav",
-							)
+						log_project_event(
+							project.path,
+							"babble_generated",
+							{
+								"num_talkers": int(num_talkers),
+								"female_talkers": None if num_female_talkers is None else int(num_female_talkers),
+								"male_talkers": None if num_male_talkers is None else int(num_male_talkers),
+								"intended_length_seconds": float(intended_length_seconds),
+								"talker_labels": [group.label for group in result.selected_groups],
+								"talker_files": [
+									file_path.name
+									for files in result.planned_group_files
+									for file_path in files
+								],
+								"talker_repeats": result.repeat_counts_by_label,
+								"short_source_labels": result.short_source_labels,
+								"unknown_duration_labels": result.unknown_duration_labels,
+								"target_rms": float(target_rms),
+								"peak_normalize": bool(peak_norm),
+							},
+						)
 
-							log_project_event(
-								project.path,
-								"babble_generated",
-								{
-									"num_talkers": int(num_talkers),
-									"female_talkers": None if num_female_talkers is None else int(num_female_talkers),
-									"male_talkers": None if num_male_talkers is None else int(num_male_talkers),
-									"talker_labels": [group.label for group in selected_groups],
-									"talker_files": [file_path.name for group in selected_groups for file_path in group.files],
-									"target_rms": float(target_rms),
-									"peak_normalize": bool(peak_norm),
-								},
-							)
-
-						except Exception as exc:
-							st.error(f"Babble generation failed: {exc}")
+					except Exception as exc:
+						_append_console(f"Babble generation failed: {exc}", progress=100)
+						st.error(f"Babble generation failed: {exc}")
 
 	with transcribe_tab:
 		st.markdown("### Transcribe")

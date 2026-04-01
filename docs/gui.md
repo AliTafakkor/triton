@@ -93,11 +93,17 @@ Generate babble speech from labeled talker groups:
 - optionally set female and male counts separately
 - optionally assign the same label to an uploaded batch in the Import tab
 - use labels such as `bab-f1`, `bab-f2`, `bab-m1`, and `bab-m2`
+- set an intended per-talker output length
 - normalize each source file to the target RMS before concatenating files for the same talker
 - optionally peak-normalize the mixed output to prevent clipping
+- monitor a progress bar and a live status console while babble is generated
 - download the generated babble for use in experiments
 
 If no sex split is provided, Triton balances female and male talkers as evenly as possible. When multiple files share a babble label, they are concatenated in filename order after RMS normalization.
+
+If source material for a selected talker is shorter than the intended length, Triton warns and randomly repeats that talker's files until target length is reached.
+
+Babble generation in the GUI and CLI both use the same shared core function in `triton.degrade.noise_generator`, so file selection, loading, and mixing behavior are consistent.
 
 Typical workflow:
 
@@ -106,7 +112,7 @@ Typical workflow:
 3. Go to the Babble tab
 4. Review the available babble talker groups (labeled with `bab-f1`, `bab-m1`, etc.)
 5. Set the total number of talkers, then optionally set female and male counts
-6. Adjust target RMS and peak normalization settings
+6. Set intended length, then adjust target RMS and peak normalization settings
 7. Click "Generate Babble" and download the output
 
 ## Pipelines Tab

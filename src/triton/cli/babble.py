@@ -5,15 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 
 import typer
-import numpy as np
 
-from triton.core.io import load_audio, save_audio
-from triton.core.mixer import mix_babble_from_segments
+from triton.core.io import save_audio
 from triton.core.project import (
 	load_project_config,
 	log_project_event,
-	select_babble_talker_groups,
 )
+from triton.degrade.noise_generator import generate_project_babble
 
 
 babble_app = typer.Typer(add_completion=False, help="Generate babble speech")
@@ -42,6 +40,11 @@ def generate_babble(
 	peak_normalize: bool = typer.Option(
 		True, help="Peak normalize the final babble mix"
 	),
+	intended_length_seconds: float = typer.Option(
+		30.0,
+		"--intended-length-seconds",
+		help="Per-talker target length; files are repeated randomly when short.",
+	),
 ):
 	"""Generate babble speech from project files labeled as babble talkers.
 
@@ -60,58 +63,49 @@ def generate_babble(
 		raise typer.BadParameter(f"Project not found: {project_dir}") from exc
 
 	try:
-		selected_groups = select_babble_talker_groups(
+		result = generate_project_babble(
 			project_dir,
+			sr=project.sample_rate,
+			channel_mode=project.channel_mode,
 			num_talkers=num_talkers,
 			num_female_talkers=num_female_talkers,
 			num_male_talkers=num_male_talkers,
-		)
-	except ValueError as exc:
-		raise typer.BadParameter(str(exc)) from exc
-
-	talker_segments: list[list[np.ndarray]] = []
-	selected_files: list[str] = []
-	for group in selected_groups:
-		segments = []
-		for file_path in group.files:
-			audio, _ = load_audio(
-				file_path,
-				sr=project.sample_rate,
-				mono=(project.channel_mode == "mono"),
-			)
-			segments.append(audio)
-			selected_files.append(file_path.name)
-		talker_segments.append(segments)
-
-	try:
-		babble = mix_babble_from_segments(
-			talker_segments,
+			intended_length_seconds=float(intended_length_seconds),
 			target_rms=target_rms,
 			peak_normalize=peak_normalize,
+			progress_callback=lambda message, _: typer.echo(message),
 		)
-	except ValueError as exc:
+	except (ValueError, RuntimeError) as exc:
 		raise typer.BadParameter(str(exc)) from exc
 
-	save_audio(output_path, babble, project.sample_rate)
+	save_audio(output_path, result.audio, project.sample_rate)
 
 	log_project_event(
 		project_dir,
 		"babble_generated",
 		{
 			"output_path": str(output_path.resolve()),
-			"talker_count": len(selected_groups),
-			"talker_labels": [group.label for group in selected_groups],
-			"talker_files": selected_files,
-			"female_talkers": sum(1 for group in selected_groups if group.sex == "f"),
-			"male_talkers": sum(1 for group in selected_groups if group.sex == "m"),
+			"talker_count": len(result.selected_groups),
+			"talker_labels": [group.label for group in result.selected_groups],
+			"talker_files": [
+				file_path.name
+				for files in result.planned_group_files
+				for file_path in files
+			],
+			"female_talkers": sum(1 for group in result.selected_groups if group.sex == "f"),
+			"male_talkers": sum(1 for group in result.selected_groups if group.sex == "m"),
+			"short_source_labels": result.short_source_labels,
+			"unknown_duration_labels": result.unknown_duration_labels,
+			"talker_repeats": result.repeat_counts_by_label,
+			"intended_length_seconds": float(intended_length_seconds),
 			"target_rms": target_rms,
 			"peak_normalize": peak_normalize,
-			"output_duration_seconds": float(len(babble) / project.sample_rate),
+			"output_duration_seconds": float(result.audio.shape[-1] / project.sample_rate),
 		},
 	)
 
 	typer.echo(
-		f"Generated babble with {len(selected_groups)} talkers "
-		f"({sum(1 for group in selected_groups if group.sex == 'f')} female, "
-		f"{sum(1 for group in selected_groups if group.sex == 'm')} male) at {output_path}"
+		f"Generated babble with {len(result.selected_groups)} talkers "
+		f"({sum(1 for group in result.selected_groups if group.sex == 'f')} female, "
+		f"{sum(1 for group in result.selected_groups if group.sex == 'm')} male) at {output_path}"
 	)

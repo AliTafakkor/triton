@@ -33,6 +33,7 @@ In the **Babble** tab:
 - Label talker-group files as `bab-f1`, `bab-f2`, `bab-m1`, etc., or assign that label during import to a whole batch
 - Set the total number of talker groups to mix
 - Optionally set female and male counts separately
+- Set intended per-talker length (seconds)
 - Normalize each source file to the same RMS, concatenate files for each talker, and optionally peak-normalize the output
 - Play and download the mixed babble output
 
@@ -47,6 +48,7 @@ pixi run triton files label my-project speaker_m1.wav "bab-m1"
 # Mix 3 talker groups with RMS normalization
 pixi run triton babble mix my-project \
   --num-talkers 3 \
+  --intended-length-seconds 30 \
   --output-path outputs/babble.wav
 ```
 
@@ -121,6 +123,7 @@ Generate babble by mixing labeled talker groups with RMS normalization:
 # Mix talker groups
 pixi run triton babble mix my-project \
   --num-talkers 3 \
+  --intended-length-seconds 30 \
   --output-path outputs/babble_3talkers.wav
 
 # Or specify female and male counts explicitly
@@ -128,6 +131,7 @@ pixi run triton babble mix my-project \
   --num-talkers 4 \
   --num-female-talkers 2 \
   --num-male-talkers 2 \
+  --intended-length-seconds 45 \
   --output-path outputs/babble_4talkers.wav
 
 # Add noise to the babble at a target SNR
@@ -145,3 +149,4 @@ See [Babble](cli/babble.md) for full command reference.
 - Imported files get spectrogram artifacts generated from project defaults in `triton.toml` (`[spectrogram]`).
 - Pipeline Matrix allows reproducible batch processing by combining multiple files and parameter combinations in a single run.
 - File labels persist in `metadata/file_labels.json` and work across CLI and GUI interfaces.
+- Babble generation in GUI and CLI uses the same shared core function in `triton.degrade.noise_generator`.

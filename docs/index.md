@@ -27,7 +27,7 @@ Triton is moving to a **project-first** workflow: you create/open a project, def
 
 **File Labeling**: Organize your project files with custom labels (e.g., `bab-f1`, `bab-m1`, `background`), apply one label to a whole upload batch during import, and filter by label in CLI and GUI for easier asset management.
 
-**Babble Speech Generation**: Mix labeled talker groups with per-file RMS normalization, concatenation per talker, and balanced male/female selection when counts are not specified. Useful for speech-in-noise research and cocktail-party effect studies.
+**Babble Speech Generation**: Mix labeled talker groups with per-file RMS normalization, concatenation per talker, intended-length planning, and balanced male/female selection when counts are not specified. If a talker is short, files repeat randomly to reach target length. GUI and CLI share the same core babble generator.
 
 ## Quickstart
 
