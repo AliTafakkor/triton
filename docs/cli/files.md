@@ -83,12 +83,28 @@ background (1 files):
 
 ## GUI File Management
 
-In the **Import** or file browser tabs:
+In the **Manage and Explore Files** tab:
 
-1. **Apply a batch label during import**: When you upload multiple files in the Import tab, you can assign the same label to all of them at once.
+### Import and Label Files
+
+1. **Apply a batch label during import**: When you upload multiple files, you can assign the same label to all of them at once.
 2. **View labels**: A "Label" column shows the assigned label for each file.
 3. **Add labels**: Click a file's label cell to edit and assign a new label.
 4. **Filter by label**: Use the dropdown filter above the file list to show only files with a specific label.
+
+### Rename Labels
+
+Use the **Rename Labels** expander to rename a label across all files that have it:
+
+1. Select an existing label from the dropdown
+2. Enter a new label name
+3. Click "Rename"
+4. All files with the old label are updated to the new label
+
+This is useful for:
+- Correcting label typos across multiple files
+- Reorganizing labels (e.g., from generic `talker` to `bab-f1`)
+- Preparing files for babble generation with consistent naming
 
 Labels update instantly and persist to disk.
 

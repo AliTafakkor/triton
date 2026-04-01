@@ -31,9 +31,11 @@ Each project stores config and data inside its own directory:
   metadata/
 ```
 
-## Import Tab
+## Manage and Explore Files Tab
 
-The Import tab is the default project workspace entry point for source files.
+The Manage and Explore Files tab is the default project workspace entry point for managing source files and their labels.
+
+### Import Files
 
 - import one or more audio files into project raw storage (`data/raw`)
 - optionally assign one label to the full upload batch during import
@@ -41,6 +43,16 @@ The Import tab is the default project workspace entry point for source files.
 - play audio inline per file
 - rename or remove files
 - open a precomputed spectrogram per file in the right-side spectrogram panel
+
+After importing files, the file browser selection and upload widget are automatically reset to allow for a clean next import.
+
+### Rename Labels
+
+Rename an existing label to apply the new name to all files that currently have that label. This is useful for:
+
+- correcting label typos across multiple files
+- reorganizing labels (e.g., renaming all `talker` labels to `bab-f1`)
+- preparing files for babble generation with consistent naming (e.g., `bab-f1`, `bab-m1`)
 
 Imported files automatically trigger spectrogram computation using project defaults from `triton.toml` (`[spectrogram]` section).
 
@@ -89,12 +101,13 @@ If no sex split is provided, Triton balances female and male talkers as evenly a
 
 Typical workflow:
 
-1. Label talker-group files in the Import tab during upload, or edit labels later (e.g., `bab-f1`, `bab-m1`)
-2. Go to the Babble tab
-3. Review the available babble talker groups
-4. Set the total number of talkers, then optionally set female and male counts
-5. Adjust target RMS and peak normalization settings
-6. Click "Generate Babble" and download the output
+1. Import audio files in the Manage and Explore Files tab, optionally assigning a batch label
+2. Edit labels individually in the file table, or rename multiple labels at once using the "Rename Labels" panel
+3. Go to the Babble tab
+4. Review the available babble talker groups (labeled with `bab-f1`, `bab-m1`, etc.)
+5. Set the total number of talkers, then optionally set female and male counts
+6. Adjust target RMS and peak normalization settings
+7. Click "Generate Babble" and download the output
 
 ## Pipelines Tab
 

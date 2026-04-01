@@ -12,14 +12,15 @@ From the GUI dashboard:
 - Open an existing project from anywhere on disk, or
 - Re-open from recent projects.
 
-## 3) Import and inspect project files
+## 3) Manage and explore project files
 
-In the **Import** tab:
+In the **Manage and Explore Files** tab:
 
 - Import audio files into project raw storage
 - Apply one label to all files uploaded together
 - Rename files
 - **Label files** (e.g., `bab-f1`, `bab-m1`, `background`) for organization
+- **Rename labels** to apply a new label to all files with the old label (useful for bulk corrections or preparations)
 - **Filter by label** to view only files with a specific tag
 - Remove files
 - Play files inline
