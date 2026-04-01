@@ -4,9 +4,11 @@ from triton.core.project import (
 	add_project_file,
 	create_project,
 	delete_project_file,
+	load_file_labels,
 	log_project_event,
 	read_project_log,
 	rename_project_file,
+	set_project_file_labels,
 )
 
 
@@ -38,3 +40,14 @@ def test_project_log_manual_event(tmp_path) -> None:
 
 	events = read_project_log(project.path)
 	assert any(item.get("event") == "custom_event" for item in events)
+
+
+def test_bulk_file_label_assignment(tmp_path) -> None:
+	project = create_project(tmp_path / "demo", sample_rate=16000, channel_mode="mono")
+	first = add_project_file(project.path, "one.wav", b"RIFF")
+	second = add_project_file(project.path, "two.wav", b"RIFF")
+
+	set_project_file_labels(project.path, [first, second], "bab-f1")
+
+	labels = load_file_labels(project.path)
+	assert labels == {"one.wav": "bab-f1", "two.wav": "bab-f1"}
