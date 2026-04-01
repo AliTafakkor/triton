@@ -28,6 +28,7 @@ nav:
       - transcribe: cli/transcribe.md
       - degrade: cli/degrade.md
       - convert: cli/convert.md
+      - normalize: cli/normalize.md
       - matrix: cli/matrix.md
   - API:
       - core.mixer: api/core.mixer.md
