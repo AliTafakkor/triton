@@ -206,3 +206,25 @@ def rms(signal: np.ndarray, axis: int = -1) -> np.ndarray:
 	"""
 	signal = np.asarray(signal, dtype=np.float32)
 	return np.sqrt(np.mean(np.square(signal), axis=axis))
+
+
+def normalize_rms(audio: np.ndarray, target: float = 0.1) -> np.ndarray:
+	"""Normalize audio to a target RMS (root mean square) amplitude.
+
+	Args:
+		audio: Input waveform.
+		target: Target RMS amplitude (0-1). Default 0.1 (-20dB) is a safe loudness level.
+
+	Returns:
+		Normalized waveform.
+	"""
+	audio = np.asarray(audio, dtype=np.float32)
+	if audio.ndim > 1:
+		# For multi-channel, compute RMS across all channels and samples
+		audio_rms = np.sqrt(np.mean(np.square(audio)))
+	else:
+		audio_rms = np.sqrt(np.mean(np.square(audio)))
+
+	if audio_rms > 0:
+		return target * audio / audio_rms
+	return audio
