@@ -14,3 +14,7 @@ requires-python = ">=3.12"
 [tool.setuptools]
 packages = ["triton"]
 package-dir = {"" = "src"}
+include-package-data = true
+
+[tool.setuptools.package-data]
+triton = ["gui/assets/*.css"]

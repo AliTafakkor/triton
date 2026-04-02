@@ -13753,7 +13753,7 @@ packages:
 - pypi: ./
   name: triton
   version: 0.1.0
-  sha256: 6e43de9ef2796553fa7077cdeb3de0e54b28fd940fc2ea6580447bd8f94ea8ad
+  sha256: fdb3a1ec5d932a8539a8a6cee2392d00110065a7617a7da10a250aab848fd356
   requires_python: '>=3.12'
   editable: true
 - conda: https://conda.anaconda.org/conda-forge/noarch/typer-0.23.1-pyhcf101f3_0.conda
