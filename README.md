@@ -94,14 +94,14 @@ triton transcribe local --project my-project --input asset:moth_episode_03
 - Support presets at the project level for common transformations.
 - Add manifest or run-history views so users can see what has been imported and produced.
 - Introduce safe overwrite rules, duplicate handling, and validation warnings when settings change.
-- Consider a future GUI around the same project abstraction instead of building separate logic for the interface layer.
+- Keep the GUI aligned to the same project abstraction instead of building separate interface-only logic.
 
 ## Design Principles
 - One project defines one canonical audio specification.
 - Import and ingest should normalize data at the boundary, not leave format cleanup to later commands.
 - Downstream processing should operate on stable project assets, not ad hoc file paths whenever possible.
 - Metadata should be captured automatically so provenance and reproducibility do not depend on user memory.
-- CLI and future GUI should share the same project model and storage conventions.
+- CLI and GUI should share the same project model and storage conventions.
 
 ## Immediate Implementation Priorities
 1. Define `triton.toml` and the on-disk project layout.

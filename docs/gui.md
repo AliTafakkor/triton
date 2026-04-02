@@ -7,6 +7,19 @@ Triton includes a Streamlit GUI for project-oriented workflows.
 - `pixi run gui`
 - UI theme is forced to dark mode via project Streamlit config (`.streamlit/config.toml`).
 
+## Developer Layout
+
+The GUI is now split by responsibility so `app.py` stays focused on page-level orchestration:
+
+- `triton.gui.app`: app bootstrap, page setup, and top-level routing
+- `triton.gui.shared`: shared helpers used across multiple tabs
+- `triton.gui.tabs.file_library`: Manage and Explore Files tab UI
+- `triton.gui.tabs.pipelines`: Pipelines tab UI and controls
+- `triton.gui.tabs.rss`: RSS ingest tab UI
+- `triton.gui.assets.app.css`: GUI stylesheet loaded at app startup
+
+When adding a new tab, place tab-specific rendering logic in `triton.gui.tabs.<name>` and keep cross-tab helpers in `triton.gui.shared`.
+
 ## Project Dashboard
 
 When the app opens, you start from a project launcher:
