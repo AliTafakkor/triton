@@ -46,6 +46,7 @@ from triton.core.project import (
 	rename_project_file,
 	register_recent_project,
 	save_project_pipelines,
+	save_project_generated_audio,
 	update_project_spectrogram_settings,
 	load_babble_talker_groups,
 	load_file_labels,
@@ -79,6 +80,144 @@ def _create_project(project_dir: Path, sample_rate: int, channel_mode: ChannelMo
 	st.session_state["active_project"] = project
 	register_recent_project(project_dir, project.name)
 	return project
+
+
+def _babble_generation_signature(
+	project: Project,
+	*,
+	num_talkers: int,
+	num_female_talkers: int | None,
+	num_male_talkers: int | None,
+	intended_length_seconds: float,
+	target_rms: float,
+	peak_normalize: bool,
+) -> dict[str, object]:
+	return {
+		"project_path": str(project.path.resolve()),
+		"num_talkers": int(num_talkers),
+		"num_female_talkers": None if num_female_talkers is None else int(num_female_talkers),
+		"num_male_talkers": None if num_male_talkers is None else int(num_male_talkers),
+		"intended_length_seconds": float(intended_length_seconds),
+		"target_rms": float(target_rms),
+		"peak_normalize": bool(peak_normalize),
+	}
+
+
+def _render_saved_babble_output(project: Project, babble_state: dict[str, object]) -> None:
+	babble_bytes = babble_state["babble_bytes"]
+	selected_groups = babble_state["selected_groups"]
+	planned_group_files = babble_state["planned_group_files"]
+	short_source_labels = babble_state["short_source_labels"]
+	unknown_duration_labels = babble_state["unknown_duration_labels"]
+	repeat_counts_by_label = babble_state["repeat_counts_by_label"]
+	intended_length_seconds = float(babble_state["intended_length_seconds"])
+	target_rms = float(babble_state["target_rms"])
+	peak_norm = bool(babble_state["peak_normalize"])
+	num_talkers = int(babble_state["num_talkers"])
+	num_female_talkers = babble_state["num_female_talkers"]
+	num_male_talkers = babble_state["num_male_talkers"]
+	sample_rate = int(babble_state["sample_rate"])
+	babble_label = f"bab-t{num_talkers}"
+
+	if short_source_labels:
+		st.warning(
+			"Some talkers do not have enough unique source duration for the intended length: "
+			+ ", ".join(short_source_labels)
+			+ ". Their files were repeated randomly."
+		)
+	if unknown_duration_labels:
+		st.warning(
+			"Could not estimate duration for some files while planning: "
+			+ ", ".join(unknown_duration_labels)
+			+ ". Full selected files were loaded for those talkers."
+		)
+	if repeat_counts_by_label:
+		st.info(
+			"Random repeats applied for short talkers: "
+			+ ", ".join(f"{label} (+{count})" for label, count in sorted(repeat_counts_by_label.items()))
+		)
+
+	st.success(
+		f"Babble generated from {len(selected_groups)} talker groups "
+		f"({sum(1 for group in selected_groups if group['sex'] == 'f')} female, "
+		f"{sum(1 for group in selected_groups if group['sex'] == 'm')} male)."
+	)
+
+	st.markdown("#### Selected Talkers")
+	for group, files in zip(selected_groups, planned_group_files, strict=False):
+		st.caption(f"{group['label']}: {', '.join(Path(file_path).name for file_path in files)}")
+
+	st.markdown("### Babble Output")
+	st.audio(babble_bytes, format="audio/wav")
+	download_col, add_col = st.columns(2)
+	with download_col:
+		st.download_button(
+			label="Download babble",
+			data=babble_bytes,
+			file_name="triton_babble.wav",
+			mime="audio/wav",
+		)
+	with add_col:
+		if st.button("Add to project", type="secondary", key="babble_add_to_project"):
+			filename = f"babble_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.wav"
+			generation_options = {
+				"num_talkers": num_talkers,
+				"female_talkers": num_female_talkers,
+				"male_talkers": num_male_talkers,
+				"intended_length_seconds": intended_length_seconds,
+				"target_rms": target_rms,
+				"peak_normalize": peak_norm,
+			}
+			saved_path = save_project_generated_audio(
+				project.path,
+				filename,
+				babble_state["audio"],
+				sample_rate,
+				label=babble_label,
+				source={
+					"type": "project_babble",
+					"project_name": project.name,
+					"project_path": str(project.path.resolve()),
+					"talkers": [
+						{
+							"label": group["label"],
+							"sex": group["sex"],
+							"index": int(group["index"]),
+							"files": [str(Path(file_path).resolve()) for file_path in files],
+						}
+						for group, files in zip(selected_groups, planned_group_files, strict=False)
+					],
+				},
+				actions=[
+					{
+						"step": "generate_project_babble",
+						"options": generation_options,
+					},
+					{
+						"step": "add_project_generated_audio",
+						"options": {
+							"filename": filename,
+							"label": babble_label,
+						},
+					},
+				],
+				extra={
+					"babble": {
+						"num_talkers": num_talkers,
+						"female_talkers": num_female_talkers,
+						"male_talkers": num_male_talkers,
+						"intended_length_seconds": intended_length_seconds,
+						"target_rms": target_rms,
+						"peak_normalize": peak_norm,
+						"selected_groups": selected_groups,
+						"planned_group_files": [[str(Path(file_path).resolve()) for file_path in files] for files in planned_group_files],
+						"short_source_labels": short_source_labels,
+						"unknown_duration_labels": unknown_duration_labels,
+						"repeat_counts_by_label": repeat_counts_by_label,
+					},
+				},
+			)
+			st.success(f"Added babble to project as {saved_path.name} with label {babble_label}.")
 
 
 def _collect_spectrogram_settings(prefix: str, defaults: dict[str, object] | None = None) -> dict[str, object]:
@@ -1501,9 +1640,24 @@ def _render_project_workspace(project: Project) -> None:
 						help="Rescale the final babble output to prevent clipping.",
 					)
 
+					babble_generation_signature = _babble_generation_signature(
+						project,
+						num_talkers=int(num_talkers),
+						num_female_talkers=None if num_female_talkers is None else int(num_female_talkers),
+						num_male_talkers=None if num_male_talkers is None else int(num_male_talkers),
+						intended_length_seconds=float(intended_length_seconds),
+						target_rms=float(target_rms),
+						peak_normalize=bool(peak_norm),
+					)
+					stored_babble_output = st.session_state.get("babble_generated_output")
+					if stored_babble_output and stored_babble_output.get("signature") != babble_generation_signature:
+						st.session_state.pop("babble_generated_output", None)
+						stored_babble_output = None
+
 				mix_babble_button = st.button("Generate Babble", type="primary", key="mix_babble_button")
 
 				if mix_babble_button:
+					st.session_state.pop("babble_generated_output", None)
 					progress_bar = st.progress(0)
 					status_line = st.empty()
 					console_box = st.empty()
@@ -1530,18 +1684,6 @@ def _render_project_workspace(project: Project) -> None:
 							progress_callback=_append_console,
 						)
 
-						if result.short_source_labels:
-							st.warning(
-								"Some talkers do not have enough unique source duration for the intended length: "
-								+ ", ".join(result.short_source_labels)
-								+ ". Their files were repeated randomly."
-							)
-						if result.unknown_duration_labels:
-							st.warning(
-								"Could not estimate duration for some files while planning: "
-								+ ", ".join(result.unknown_duration_labels)
-								+ ". Full selected files were loaded for those talkers."
-							)
 						if result.repeat_counts_by_label:
 							_append_console(
 								"Random repeats applied for short talkers: "
@@ -1554,26 +1696,6 @@ def _render_project_workspace(project: Project) -> None:
 						_append_console("Encoding output WAV...", progress=90)
 						babble_bytes = _audio_bytes(result.audio, target_sr)
 						_append_console("Babble generation complete.", progress=100)
-
-						st.success(
-							f"Babble generated from {len(result.selected_groups)} talker groups "
-							f"({sum(1 for group in result.selected_groups if group.sex == 'f')} female, "
-							f"{sum(1 for group in result.selected_groups if group.sex == 'm')} male)."
-						)
-
-						st.markdown("#### Selected Talkers")
-						for group, files in zip(result.selected_groups, result.planned_group_files, strict=False):
-							st.caption(f"{group.label}: {', '.join(file_path.name for file_path in files)}")
-
-						st.markdown("### Babble Output")
-						st.audio(babble_bytes, format="audio/wav")
-						st.download_button(
-							label="Download babble",
-							data=babble_bytes,
-							file_name="triton_babble.wav",
-							mime="audio/wav",
-						)
-
 						log_project_event(
 							project.path,
 							"babble_generated",
@@ -1596,9 +1718,36 @@ def _render_project_workspace(project: Project) -> None:
 							},
 						)
 
+						st.session_state["babble_generated_output"] = {
+							"signature": babble_generation_signature,
+							"audio": result.audio,
+							"babble_bytes": babble_bytes,
+							"sample_rate": target_sr,
+							"num_talkers": int(num_talkers),
+							"num_female_talkers": None if num_female_talkers is None else int(num_female_talkers),
+							"num_male_talkers": None if num_male_talkers is None else int(num_male_talkers),
+							"intended_length_seconds": float(intended_length_seconds),
+							"target_rms": float(target_rms),
+							"peak_normalize": bool(peak_norm),
+							"selected_groups": [
+								{"label": group.label, "sex": group.sex, "index": int(group.index)}
+								for group in result.selected_groups
+							],
+							"planned_group_files": [
+								[str(file_path.resolve()) for file_path in files] for files in result.planned_group_files
+							],
+							"short_source_labels": list(result.short_source_labels),
+							"unknown_duration_labels": list(result.unknown_duration_labels),
+							"repeat_counts_by_label": dict(result.repeat_counts_by_label),
+						}
+
 					except Exception as exc:
 						_append_console(f"Babble generation failed: {exc}", progress=100)
 						st.error(f"Babble generation failed: {exc}")
+
+				stored_babble_output = st.session_state.get("babble_generated_output")
+				if stored_babble_output and stored_babble_output.get("signature") == babble_generation_signature:
+					_render_saved_babble_output(project, stored_babble_output)
 
 	with transcribe_tab:
 		st.markdown("### Transcribe")

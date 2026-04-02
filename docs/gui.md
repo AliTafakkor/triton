@@ -98,6 +98,9 @@ Generate babble speech from labeled talker groups:
 - optionally peak-normalize the mixed output to prevent clipping
 - monitor a progress bar and a live status console while babble is generated
 - download the generated babble for use in experiments
+- add the generated babble back into the project as a derivative artifact labeled `bab-t#`, where `#` is the number of talkers used
+
+When you add a generated babble to the project, Triton stores a provenance sidecar alongside the audio. The sidecar records the source files, babble parameters, intended length, RMS settings, and other generation details so the derivative can be traced and reproduced later.
 
 If no sex split is provided, Triton balances female and male talkers as evenly as possible. When multiple files share a babble label, they are concatenated in filename order after RMS normalization.
 
@@ -113,7 +116,8 @@ Typical workflow:
 4. Review the available babble talker groups (labeled with `bab-f1`, `bab-m1`, etc.)
 5. Set the total number of talkers, then optionally set female and male counts
 6. Set intended length, then adjust target RMS and peak normalization settings
-7. Click "Generate Babble" and download the output
+7. Click "Generate Babble"
+8. Use Download to save the output locally or Add to project to persist it as a labeled derivative with provenance metadata
 
 ## Pipelines Tab
 

@@ -10,6 +10,10 @@ import tomllib
 from pathlib import Path
 from typing import Literal
 
+import numpy as np
+
+from triton.core.io import save_audio
+
 
 ChannelMode = Literal["mono", "stereo"]
 BabbleSex = Literal["m", "f"]
@@ -420,6 +424,54 @@ def rename_project_file(file_path: Path, new_name: str) -> Path:
 		},
 	)
 	return renamed
+
+
+def _unique_project_raw_path(project_dir: Path, filename: str) -> Path:
+	"""Return a unique path in the project raw directory for a generated artifact."""
+	raw_dir = project_raw_dir(project_dir)
+	raw_dir.mkdir(parents=True, exist_ok=True)
+	target = raw_dir / sanitize_filename(filename)
+	if not target.exists():
+		return target
+
+	stem = target.stem
+	suffix = target.suffix
+	counter = 1
+	while True:
+		candidate = raw_dir / f"{stem}_{counter}{suffix}"
+		if not candidate.exists():
+			return candidate
+		counter += 1
+
+
+def save_project_generated_audio(
+	project_dir: Path,
+	filename: str,
+	audio: np.ndarray,
+	sr: int,
+	*,
+	label: str | None = None,
+	source: dict[str, object] | None = None,
+	actions: list[dict[str, object]] | None = None,
+	extra: dict[str, object] | None = None,
+) -> Path:
+	"""Save a generated audio artifact into project storage and label it if requested."""
+	target_path = _unique_project_raw_path(project_dir, filename)
+	save_audio(target_path, audio, sr, source=source, actions=actions, extra=extra)
+	assigned_label = label.strip() if label and label.strip() else None
+	if assigned_label is not None:
+		set_file_label(project_dir, target_path, assigned_label)
+
+	log_project_event(
+		project_dir,
+		"project_artifact_added",
+		{
+			"name": target_path.name,
+			"path": str(target_path.resolve()),
+			"label": assigned_label,
+		},
+	)
+	return target_path
 
 
 def _file_labels_path(project_dir: Path) -> Path:

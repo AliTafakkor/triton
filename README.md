@@ -5,7 +5,7 @@ Triton is a modular audio utility designed to standardize stimuli preparation an
 
 ## New Features
 
-**Babble Speech Generation**: Mix labeled talker groups such as `bab-f1` and `bab-m1`, normalize each source file to a common RMS, concatenate files per talker, and generate cocktail-party scenarios with balanced male/female selection. Babble generation now runs through a shared core noise-generation function used by both CLI and GUI, with intended-length planning and random repeat of short talkers.
+**Babble Speech Generation**: Mix labeled talker groups such as `bab-f1` and `bab-m1`, normalize each source file to a common RMS, concatenate files per talker, and generate cocktail-party scenarios with balanced male/female selection. Babble generation now runs through a shared core noise-generation function used by both CLI and GUI, with intended-length planning and random repeat of short talkers. Generated babble can also be added back into the project as a derivative labeled `bab-t#` with a provenance sidecar describing the source files and babble parameters.
 
 **File Labeling**: Organize your project files with custom labels (e.g., `bab-f1`, `bab-m1`, `background`), apply one label to a whole upload batch during import, and filter files by label in both CLI and GUI for easier asset management and processing.
 

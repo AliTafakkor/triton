@@ -36,6 +36,7 @@ In the **Babble** tab:
 - Set intended per-talker length (seconds)
 - Normalize each source file to the same RMS, concatenate files for each talker, and optionally peak-normalize the output
 - Play and download the mixed babble output
+- Add the generated babble back into the project as a derivative labeled `bab-t#`, where `#` is the number of talkers used
 
 **Or from CLI:**
 
@@ -137,6 +138,8 @@ pixi run triton babble mix my-project \
 # Add noise to the babble at a target SNR
 pixi run triton mix outputs/babble.wav noise.wav --snr-db -5
 ```
+
+If you save a generated babble back into the project from the GUI, Triton stores a provenance sidecar with the source files and babble-generation parameters so the derivative can be traced later.
 
 See [Babble](cli/babble.md) for full command reference.
 
