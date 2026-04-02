@@ -1,12 +1,16 @@
 """Triton Streamlit GUI."""
 
 from __future__ import annotations
-from triton.gui.styles import APP_CSS
-from triton.gui.project_views import _hero, _render_project_launcher, _render_matrix_tab
 from datetime import date, datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from io import BytesIO
 from pathlib import Path
+from importlib import resources
+
+from triton.gui.project_views import _hero, _render_project_launcher, _render_matrix_tab
+from triton.gui.tabs.file_library import _render_file_library as _render_file_library_tab
+from triton.gui.tabs.pipelines import _render_pipelines_tab as _render_pipelines_tab_module
+from triton.gui.tabs.rss import _render_rss_ingest_tab as _render_rss_ingest_tab_module
 
 import librosa
 import numpy as np
@@ -46,6 +50,7 @@ from triton.core.project import (
 	rename_project_file,
 	register_recent_project,
 	save_project_pipelines,
+	save_project_generated_audio,
 	update_project_spectrogram_settings,
 	load_babble_talker_groups,
 	load_file_labels,
@@ -56,6 +61,14 @@ from triton.core.io import load_audio, write_sidecar
 from triton.core.spectrogram import compute_spectrogram, load_spectrogram, save_spectrogram
 from triton.degrade.noise_generator import generate_project_babble
 from triton.ingest.rss import RssSource
+
+
+def _load_app_css() -> str:
+	css_path = resources.files(__package__) / "assets" / "app.css"
+	return f"<style>{css_path.read_text(encoding='utf-8')}</style>"
+
+
+APP_CSS = _load_app_css()
 
 
 def _pipeline_action_label(action: str) -> str:
@@ -79,6 +92,144 @@ def _create_project(project_dir: Path, sample_rate: int, channel_mode: ChannelMo
 	st.session_state["active_project"] = project
 	register_recent_project(project_dir, project.name)
 	return project
+
+
+def _babble_generation_signature(
+	project: Project,
+	*,
+	num_talkers: int,
+	num_female_talkers: int | None,
+	num_male_talkers: int | None,
+	intended_length_seconds: float,
+	target_rms: float,
+	peak_normalize: bool,
+) -> dict[str, object]:
+	return {
+		"project_path": str(project.path.resolve()),
+		"num_talkers": int(num_talkers),
+		"num_female_talkers": None if num_female_talkers is None else int(num_female_talkers),
+		"num_male_talkers": None if num_male_talkers is None else int(num_male_talkers),
+		"intended_length_seconds": float(intended_length_seconds),
+		"target_rms": float(target_rms),
+		"peak_normalize": bool(peak_normalize),
+	}
+
+
+def _render_saved_babble_output(project: Project, babble_state: dict[str, object]) -> None:
+	babble_bytes = babble_state["babble_bytes"]
+	selected_groups = babble_state["selected_groups"]
+	planned_group_files = babble_state["planned_group_files"]
+	short_source_labels = babble_state["short_source_labels"]
+	unknown_duration_labels = babble_state["unknown_duration_labels"]
+	repeat_counts_by_label = babble_state["repeat_counts_by_label"]
+	intended_length_seconds = float(babble_state["intended_length_seconds"])
+	target_rms = float(babble_state["target_rms"])
+	peak_norm = bool(babble_state["peak_normalize"])
+	num_talkers = int(babble_state["num_talkers"])
+	num_female_talkers = babble_state["num_female_talkers"]
+	num_male_talkers = babble_state["num_male_talkers"]
+	sample_rate = int(babble_state["sample_rate"])
+	babble_label = f"bab-t{num_talkers}"
+
+	if short_source_labels:
+		st.warning(
+			"Some talkers do not have enough unique source duration for the intended length: "
+			+ ", ".join(short_source_labels)
+			+ ". Their files were repeated randomly."
+		)
+	if unknown_duration_labels:
+		st.warning(
+			"Could not estimate duration for some files while planning: "
+			+ ", ".join(unknown_duration_labels)
+			+ ". Full selected files were loaded for those talkers."
+		)
+	if repeat_counts_by_label:
+		st.info(
+			"Random repeats applied for short talkers: "
+			+ ", ".join(f"{label} (+{count})" for label, count in sorted(repeat_counts_by_label.items()))
+		)
+
+	st.success(
+		f"Babble generated from {len(selected_groups)} talker groups "
+		f"({sum(1 for group in selected_groups if group['sex'] == 'f')} female, "
+		f"{sum(1 for group in selected_groups if group['sex'] == 'm')} male)."
+	)
+
+	st.markdown("#### Selected Talkers")
+	for group, files in zip(selected_groups, planned_group_files, strict=False):
+		st.caption(f"{group['label']}: {', '.join(Path(file_path).name for file_path in files)}")
+
+	st.markdown("### Babble Output")
+	st.audio(babble_bytes, format="audio/wav")
+	download_col, add_col = st.columns(2)
+	with download_col:
+		st.download_button(
+			label="Download babble",
+			data=babble_bytes,
+			file_name="triton_babble.wav",
+			mime="audio/wav",
+		)
+	with add_col:
+		if st.button("Add to project", type="secondary", key="babble_add_to_project"):
+			filename = f"babble_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.wav"
+			generation_options = {
+				"num_talkers": num_talkers,
+				"female_talkers": num_female_talkers,
+				"male_talkers": num_male_talkers,
+				"intended_length_seconds": intended_length_seconds,
+				"target_rms": target_rms,
+				"peak_normalize": peak_norm,
+			}
+			saved_path = save_project_generated_audio(
+				project.path,
+				filename,
+				babble_state["audio"],
+				sample_rate,
+				label=babble_label,
+				source={
+					"type": "project_babble",
+					"project_name": project.name,
+					"project_path": str(project.path.resolve()),
+					"talkers": [
+						{
+							"label": group["label"],
+							"sex": group["sex"],
+							"index": int(group["index"]),
+							"files": [str(Path(file_path).resolve()) for file_path in files],
+						}
+						for group, files in zip(selected_groups, planned_group_files, strict=False)
+					],
+				},
+				actions=[
+					{
+						"step": "generate_project_babble",
+						"options": generation_options,
+					},
+					{
+						"step": "add_project_generated_audio",
+						"options": {
+							"filename": filename,
+							"label": babble_label,
+						},
+					},
+				],
+				extra={
+					"babble": {
+						"num_talkers": num_talkers,
+						"female_talkers": num_female_talkers,
+						"male_talkers": num_male_talkers,
+						"intended_length_seconds": intended_length_seconds,
+						"target_rms": target_rms,
+						"peak_normalize": peak_norm,
+						"selected_groups": selected_groups,
+						"planned_group_files": [[str(Path(file_path).resolve()) for file_path in files] for files in planned_group_files],
+						"short_source_labels": short_source_labels,
+						"unknown_duration_labels": unknown_duration_labels,
+						"repeat_counts_by_label": repeat_counts_by_label,
+					},
+				},
+			)
+			st.success(f"Added babble to project as {saved_path.name} with label {babble_label}.")
 
 
 def _collect_spectrogram_settings(prefix: str, defaults: dict[str, object] | None = None) -> dict[str, object]:
@@ -323,282 +474,7 @@ def _render_styles() -> None:
 	st.markdown(APP_CSS, unsafe_allow_html=True)
 
 def _render_file_library(project: Project, project_files: list[Path]) -> None:
-	st.markdown("### Import Files")
-	st.caption(f"Imported source files are stored in {project_raw_dir(project.path)}")
-
-	add_col, count_col = st.columns([2, 3])
-	with add_col:
-		with st.form("project_file_upload_form"):
-			uploaded_files = st.file_uploader(
-				"Import audio files",
-				type=["wav", "flac", "ogg", "mp3", "m4a"],
-				accept_multiple_files=True,
-				key="project_file_upload",
-			)
-			batch_label = st.text_input(
-				"Apply one label to all imported files",
-				value="",
-				placeholder="e.g., bab-f1",
-				key="project_file_upload_label",
-			)
-			upload_submitted = st.form_submit_button("Import selected files", type="primary")
-
-		if upload_submitted:
-			if not uploaded_files:
-				st.error("Choose at least one file to import.")
-			else:
-				saved_paths = _save_uploaded_project_files(project, list(uploaded_files), batch_label=batch_label)
-				st.success(f"Imported {len(saved_paths)} file(s) and precomputed spectrograms.")
-				# Reset file browser selection state
-				st.session_state["project_file_upload"] = None
-				st.session_state["project_file_upload_label"] = ""
-				st.session_state.pop("selected_spectrogram_file", None)
-				st.session_state.pop("file_list_page", None)
-				# Clear form state
-				st.session_state.pop("project_file_upload_form", None)
-				# Clear all file checkbox states from previous imports
-				for key in list(st.session_state.keys()):
-					if key.startswith("import_checked_"):
-						st.session_state.pop(key, None)
-				st.rerun()
-
-	with count_col:
-		st.markdown(
-			f"""
-			<div style="height: 100%; min-height: 136px; padding: 18px 20px; border-radius: 22px; background: var(--card-top-bg); border: 1px solid var(--panel-border);">
-			  <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--hero-kicker); margin-bottom: 8px;">Import status</div>
-			  <div style="font-size: 36px; font-weight: 800; margin-bottom: 6px;">{len(project_files)}</div>
-			  <div style="color: var(--card-subtle-text);">file(s) available for playback, spectrogram, and pipelines.</div>
-			</div>
-			""",
-			unsafe_allow_html=True,
-		)
-
-	if not project_files:
-		st.info("No files have been imported to this project yet.")
-		return
-
-	selected_spectrogram = st.session_state.get("selected_spectrogram_file")
-
-	st.markdown("### Imported Files")
-	list_col, panel_col = st.columns([1.9, 1.1], gap="large")
-
-	with list_col:
-		filter_row_col1, filter_row_col2, filter_row_col3 = st.columns([2, 2, 2])
-		
-		with filter_row_col1:
-			search_text = st.text_input("Search files", value="", placeholder="Type a file name...")
-		
-		with filter_row_col2:
-			# Get available labels for filtering
-			all_labels = load_file_labels(project.path)
-			available_labels = sorted(set(all_labels.values()))
-			label_filter = st.selectbox(
-				"Filter by label",
-				options=["(All)"] + available_labels,
-				format_func=lambda x: x if x == "(All)" else f"Label: {x}"
-			)
-		
-		with filter_row_col3:
-			sort_mode = st.selectbox("Sort", options=["name", "size_desc", "size_asc"], format_func=lambda value: {
-				"name": "Name (A-Z)",
-				"size_desc": "Size (largest first)",
-				"size_asc": "Size (smallest first)",
-			}[value])
-
-		# Apply filters
-		visible_files = [path for path in project_files if search_text.strip().lower() in path.name.lower()]
-		
-		if label_filter != "(All)":
-			visible_files = [f for f in visible_files if all_labels.get(f.name) == label_filter]
-		
-		if sort_mode == "size_desc":
-			visible_files = sorted(visible_files, key=lambda path: path.stat().st_size, reverse=True)
-		elif sort_mode == "size_asc":
-			visible_files = sorted(visible_files, key=lambda path: path.stat().st_size)
-
-		if not visible_files:
-			st.info("No files match your search.")
-		else:
-			# Pagination
-			items_per_page = 15
-			total_pages = (len(visible_files) + items_per_page - 1) // items_per_page
-			current_page = st.session_state.get("file_list_page", 0)
-			current_page = min(current_page, total_pages - 1)
-
-			start_idx = current_page * items_per_page
-			end_idx = start_idx + items_per_page
-			page_files = visible_files[start_idx:end_idx]
-
-			# Table header
-			header_cols = st.columns([0.4, 2.0, 1.5, 1.0, 1.2, 0.7, 0.7, 0.7])
-			with header_cols[0]:
-				st.caption("✓")
-			with header_cols[1]:
-				st.caption("**File Name**")
-			with header_cols[2]:
-				st.caption("**Size**")
-			with header_cols[3]:
-				st.caption("**Type**")
-			with header_cols[4]:
-				st.caption("**Label**")
-			with header_cols[5]:
-				st.caption("**View**")
-			with header_cols[6]:
-				st.caption("**Rename**")
-			with header_cols[7]:
-				st.caption("**Delete**")
-
-			# Table rows
-			for index, file_path in enumerate(page_files):
-				global_index = start_idx + index
-				spec_path = _spectrogram_path(file_path)
-				check_key = f"import_checked_{_pipeline_key(str(file_path))}"
-				file_label = all_labels.get(file_path.name, "")
-
-				row_cols = st.columns([0.4, 2.0, 1.5, 1.0, 1.2, 0.7, 0.7, 0.7])
-
-				with row_cols[0]:
-					st.checkbox("Select file", key=check_key, label_visibility="collapsed")
-
-				with row_cols[1]:
-					st.caption(file_path.name)
-
-				with row_cols[2]:
-					st.caption(_format_file_size(file_path.stat().st_size))
-
-				with row_cols[3]:
-					st.caption(file_path.suffix.lower())
-
-				with row_cols[4]:
-					label_key = f"label_input_{_pipeline_key(str(file_path))}"
-					new_label = st.text_input(
-						"Set label",
-						value=file_label,
-						key=label_key,
-						label_visibility="collapsed",
-						placeholder="e.g., talker1"
-					)
-					if new_label != file_label:
-						set_file_label(project.path, file_path, new_label)
-						st.rerun()
-
-				with row_cols[5]:
-					if st.button("📊", key=f"spec_{global_index}", help="View spectrogram", use_container_width=True):
-						if not spec_path.exists():
-							try:
-								_generate_file_spectrogram(file_path, project)
-							except Exception as exc:
-								st.error(f"Could not generate spectrogram for {file_path.name}: {exc}")
-							else:
-								st.session_state["selected_spectrogram_file"] = str(file_path)
-								st.rerun()
-						else:
-							st.session_state["selected_spectrogram_file"] = str(file_path)
-							st.rerun()
-
-				with row_cols[6]:
-					if st.button("✏️", key=f"rename_{global_index}", help="Rename file", use_container_width=True):
-						st.session_state["rename_mode"] = global_index
-						st.rerun()
-
-				with row_cols[7]:
-					if st.button("🗑️", key=f"delete_{global_index}", help="Delete file", use_container_width=True):
-						_delete_project_file(file_path)
-						if spec_path.exists():
-							spec_path.unlink()
-						if st.session_state.get("selected_spectrogram_file") == str(file_path):
-							st.session_state.pop("selected_spectrogram_file", None)
-						st.session_state.pop(check_key, None)
-						st.rerun()
-
-			# Pagination controls
-			if total_pages > 1:
-				pagination_cols = st.columns([1, 1, 1, 1])
-				with pagination_cols[0]:
-					if st.button("⬅ Previous", key="prev_page", use_container_width=True, disabled=current_page == 0):
-						st.session_state["file_list_page"] = max(0, current_page - 1)
-						st.rerun()
-
-				with pagination_cols[1]:
-					st.caption(f"Page {current_page + 1} of {total_pages}")
-
-				with pagination_cols[2]:
-					if st.button("Next ➡", key="next_page", use_container_width=True, disabled=current_page >= total_pages - 1):
-						st.session_state["file_list_page"] = min(total_pages - 1, current_page + 1)
-						st.rerun()
-
-				with pagination_cols[3]:
-					st.caption(f"Showing {len(page_files)} of {len(visible_files)} file(s)")
-
-	with panel_col:
-		with st.container(border=True):
-			st.markdown("### Spectrogram")
-			selected_path = next((path for path in project_files if str(path) == str(selected_spectrogram)), None)
-			if selected_path is None:
-				st.caption("Click Spec on a file to open its spectrogram here.")
-			else:
-				spec_path = _spectrogram_path(selected_path)
-				st.caption(selected_path.name)
-				if not spec_path.exists():
-					st.warning("No spectrogram found for this file. Click Spec again to generate it.")
-				else:
-					try:
-						result, _ = load_spectrogram(spec_path)
-					except Exception as exc:
-						st.error(f"Could not load spectrogram for {selected_path.name}: {exc}")
-					else:
-						times = np.asarray(result.times, dtype=np.float32)
-						freqs = np.asarray(result.freqs, dtype=np.float32)
-						if result.values.size == 0 or times.size == 0 or freqs.size == 0:
-							st.warning("Spectrogram data is empty.")
-						else:
-							values = np.asarray(result.values, dtype=np.float32)
-							# Keep the interactive chart responsive by capping rendered cells.
-							max_time_bins = 700
-							max_freq_bins = 256
-							time_step = max(1, int(np.ceil(values.shape[1] / max_time_bins)))
-							freq_step = max(1, int(np.ceil(values.shape[0] / max_freq_bins)))
-
-							if time_step > 1 or freq_step > 1:
-								plot_values = values[::freq_step, ::time_step]
-								plot_times = times[::time_step]
-								plot_freqs = freqs[::freq_step]
-								st.caption(
-									f"Interactive preview downsampled: time x{time_step}, frequency x{freq_step}"
-								)
-							else:
-								plot_values = values
-								plot_times = times
-								plot_freqs = freqs
-
-							fig = go.Figure(
-								data=go.Heatmap(
-									z=plot_values,
-									x=plot_times,
-									y=plot_freqs,
-									colorscale="Gray",
-									zmin=-80.0,
-									zmax=0.0,
-									colorbar={"title": "dB"},
-								)
-							)
-							fig.update_layout(
-								title=f"{result.kind.upper()} Spectrogram",
-								xaxis_title="Time (s)",
-								yaxis_title="Frequency (Hz)",
-								plot_bgcolor="rgba(16, 41, 53, 1)",
-								paper_bgcolor="rgba(0, 0, 0, 0)",
-								font={"color": "#e6f2f2"},
-								margin={"l": 60, "r": 20, "t": 40, "b": 50},
-							)
-							fig.update_xaxes(showgrid=False)
-							fig.update_yaxes(showgrid=False)
-							st.plotly_chart(
-								fig,
-								width="stretch",
-								config={"scrollZoom": True, "displaylogo": False},
-							)
+	_render_file_library_tab(project, project_files)
 
 
 def _parse_episode_published_date(published: str | None) -> date | None:
@@ -625,186 +501,7 @@ def _parse_episode_published_date(published: str | None) -> date | None:
 
 
 def _render_rss_ingest_tab(project: Project) -> None:
-	st.markdown("### Podcast RSS Ingest")
-	st.write(
-		"Fetch podcast episodes from an RSS feed and add them into this project's raw storage. "
-		"Each downloaded file also gets a spectrogram artifact."
-	)
-
-	raw_dir = project_raw_dir(project.path)
-	st.caption(f"Downloads will be saved to {raw_dir}")
-
-	with st.form("rss_ingest_form"):
-		default_end = datetime.now().date()
-		default_start = default_end - timedelta(days=30)
-		if "rss_ingest_start_date" not in st.session_state:
-			st.session_state["rss_ingest_start_date"] = default_start
-		if "rss_ingest_end_date" not in st.session_state:
-			st.session_state["rss_ingest_end_date"] = default_end
-
-		feed_url = st.text_input(
-			"Podcast RSS URL",
-			placeholder="https://example.com/feed.xml",
-			key="rss_ingest_feed_url",
-		)
-		controls_col1, controls_col2 = st.columns(2)
-		with controls_col1:
-			limit = int(
-				st.number_input(
-					"Max episodes",
-					min_value=1,
-					max_value=200,
-					value=10,
-					step=1,
-					key="rss_ingest_limit",
-				)
-			)
-		with controls_col2:
-			overwrite = st.checkbox("Overwrite existing files", value=False, key="rss_ingest_overwrite")
-
-		use_date_range = st.checkbox("Filter by publish date", value=False, key="rss_ingest_use_date_range")
-		date_preset = st.selectbox(
-			"Date preset",
-			options=["Custom", "Last 7 days", "Last 30 days", "Last 90 days"],
-			key="rss_ingest_date_preset",
-			disabled=not use_date_range,
-		)
-
-		if use_date_range and date_preset != "Custom":
-			preset_days = {
-				"Last 7 days": 7,
-				"Last 30 days": 30,
-				"Last 90 days": 90,
-			}.get(date_preset, 30)
-			st.session_state["rss_ingest_end_date"] = default_end
-			st.session_state["rss_ingest_start_date"] = default_end - timedelta(days=preset_days - 1)
-
-		date_col1, date_col2 = st.columns(2)
-		with date_col1:
-			start_date = st.date_input(
-				"Start date",
-				key="rss_ingest_start_date",
-				disabled=not use_date_range or date_preset != "Custom",
-			)
-		with date_col2:
-			end_date = st.date_input(
-				"End date",
-				key="rss_ingest_end_date",
-				disabled=not use_date_range or date_preset != "Custom",
-			)
-
-		if use_date_range and date_preset != "Custom":
-			st.caption(f"Using preset window: {date_preset.lower()}.")
-
-		fetch_only = st.checkbox("Preview only (do not download)", value=True, key="rss_ingest_preview_only")
-		submitted = st.form_submit_button("Fetch RSS", type="primary")
-
-	if not submitted:
-		return
-
-	clean_feed_url = feed_url.strip()
-	if not clean_feed_url:
-		st.error("RSS URL is required.")
-		return
-
-	with st.spinner("Reading feed..."):
-		try:
-			source = RssSource(clean_feed_url)
-			entries = source.list_entries()
-		except Exception as exc:
-			st.error(f"Could not read RSS feed: {exc}")
-			return
-
-	if not entries:
-		st.warning("No audio enclosure entries were found in this feed.")
-		return
-
-	if use_date_range:
-		if start_date > end_date:
-			st.error("Start date must be earlier than or equal to end date.")
-			return
-
-		filtered_entries = []
-		missing_dates = 0
-		for episode in entries:
-			published_date = _parse_episode_published_date(episode.published)
-			if published_date is None:
-				missing_dates += 1
-				continue
-			if start_date <= published_date <= end_date:
-				filtered_entries.append(episode)
-
-		entries = filtered_entries
-		if missing_dates:
-			st.caption(f"Skipped {missing_dates} episode(s) without a parseable publish date.")
-
-		if not entries:
-			st.warning("No episodes matched the selected date range.")
-			return
-
-	selected_entries = entries[: max(0, limit)]
-	st.success(f"Found {len(entries)} audio episode(s); showing first {len(selected_entries)}.")
-
-	preview_rows = []
-	for episode in selected_entries:
-		preview_rows.append(
-			{
-				"Title": episode.title,
-				"Published": episode.published or "",
-				"Filename": episode.filename,
-				"URL": episode.url,
-			}
-		)
-	st.dataframe(preview_rows, width="stretch")
-
-	if fetch_only:
-		return
-
-	with st.status("Downloading episodes...", expanded=True) as download_status:
-		try:
-			downloaded_paths = source.download(selected_entries, raw_dir, overwrite=overwrite)
-		except Exception as exc:
-			st.error(f"RSS download failed: {exc}")
-			return
-
-	generated_specs = 0
-	spec_errors: list[str] = []
-	
-	if downloaded_paths:
-		with st.status("Generating spectrograms...", expanded=True) as spec_status:
-			spec_progress_bar = st.progress(0.0)
-			for idx, path_str in enumerate(downloaded_paths):
-				file_path = Path(path_str)
-				spec_status.write(f"Processing: {file_path.name}")
-				try:
-					_generate_file_spectrogram(file_path, project)
-				except Exception as exc:
-					spec_errors.append(f"{file_path.name}: {exc}")
-				else:
-					generated_specs += 1
-				spec_progress_val = (idx + 1) / len(downloaded_paths)
-				spec_status.update(label=f"Generating spectrograms... ({idx + 1}/{len(downloaded_paths)})", state="running")
-				spec_progress_bar.progress(spec_progress_val)
-			spec_status.update(label=f"Generated {generated_specs} spectrogram(s)", state="complete")
-
-	log_project_event(
-		project.path,
-		"rss_ingest_completed",
-		{
-			"feed_url": clean_feed_url,
-			"requested_entries": len(selected_entries),
-			"downloaded_files": len(downloaded_paths),
-			"spectrograms_generated": generated_specs,
-			"spectrogram_failures": len(spec_errors),
-		},
-	)
-
-	st.success(f"Downloaded {len(downloaded_paths)} file(s) into project raw storage.")
-	if spec_errors:
-		st.warning(f"Generated {generated_specs} spectrogram(s), {len(spec_errors)} failed.")
-		for error in spec_errors:
-			st.caption(error)
-	st.rerun()
+	_render_rss_ingest_tab_module(project)
 
 
 def _pipeline_key(name: str) -> str:
@@ -1013,191 +710,7 @@ def _render_step_options_editor(step: str, index: int, project: Project) -> dict
 
 
 def _render_pipelines_tab(project: Project, project_files: list[Path]) -> None:
-	pipelines = _load_pipelines(project)
-	pipeline_names = [item.name for item in pipelines]
-
-	pending_selected_pipeline = st.session_state.pop("pending_selected_pipeline_name", None)
-	if pending_selected_pipeline is not None:
-		if pending_selected_pipeline == "__clear__":
-			st.session_state.pop("selected_pipeline_name", None)
-		elif pending_selected_pipeline in set(pipeline_names):
-			st.session_state["selected_pipeline_name"] = pending_selected_pipeline
-
-	if pipeline_names and st.session_state.get("selected_pipeline_name") not in set(pipeline_names):
-		st.session_state["selected_pipeline_name"] = pipeline_names[0]
-
-	st.markdown("### Pipelines")
-	st.write("Default view shows your pipeline list. Pick one to run or edit, or create a new pipeline from the right panel.")
-
-	main_col, editor_col = st.columns([1.9, 1.1], gap="large")
-
-	with main_col:
-		action_col1, action_col2 = st.columns(2)
-		if action_col1.button("New pipeline", type="primary"):
-			_open_pipeline_editor("create", project)
-			st.rerun()
-
-		selected_pipeline: Pipeline | None = None
-		if pipeline_names:
-			selected_name = st.radio(
-				"Created pipelines",
-				options=pipeline_names,
-				key="selected_pipeline_name",
-			)
-			selected_pipeline = next((item for item in pipelines if item.name == selected_name), None)
-
-			if action_col2.button("Edit selected"):
-				if selected_pipeline is not None:
-					_open_pipeline_editor("edit", project, selected_pipeline)
-					st.rerun()
-		else:
-			action_col2.button("Edit selected", disabled=True)
-			st.info("No pipelines yet. Click New pipeline to create your first one.")
-
-		if selected_pipeline is not None:
-			st.markdown(f"#### {selected_pipeline.name}")
-			for index, step in enumerate(selected_pipeline.steps, start=1):
-				st.caption(f"{index}. {_pipeline_action_label(step)} ({step})")
-
-			run_files = st.multiselect(
-				"Files to run",
-				options=[path.name for path in project_files],
-				help="Choose one or more project files for this pipeline.",
-			)
-
-			run_col, delete_col = st.columns(2)
-			if run_col.button("Run selected pipeline", type="primary"):
-				if not run_files:
-					st.error("Select at least one file.")
-				else:
-					selected_paths = [path for path in project_files if path.name in set(run_files)]
-					successes: list[Path] = []
-					errors: list[str] = []
-					run_id = _new_pipeline_run_id()
-					run_dir = _pipeline_run_dir(project, selected_pipeline.name, run_id)
-
-					with st.spinner(f"Running {selected_pipeline.name} on {len(selected_paths)} file(s)..."):
-						for file_path in selected_paths:
-							try:
-								output_path = _run_pipeline_on_file(file_path, project, selected_pipeline, run_dir)
-							except Exception as exc:
-								errors.append(f"{file_path.name}: {exc}")
-							else:
-								successes.append(output_path)
-
-					if successes:
-						st.success(f"Processed {len(successes)} file(s).")
-						st.caption(f"Run output folder: {run_dir}")
-						for output in successes:
-							st.caption(str(output))
-						log_project_event(
-							project.path,
-							"pipeline_run_completed",
-							{
-								"pipeline": selected_pipeline.name,
-								"run_id": run_id,
-								"requested_files": len(selected_paths),
-								"succeeded": len(successes),
-								"failed": len(errors),
-							},
-						)
-					if errors:
-						for error in errors:
-							st.error(error)
-
-			if delete_col.button("Delete selected"):
-				remaining = [item for item in pipelines if item.name != selected_pipeline.name]
-				_save_pipelines(project, remaining)
-				if remaining:
-					st.session_state["pending_selected_pipeline_name"] = remaining[0].name
-				else:
-					st.session_state["pending_selected_pipeline_name"] = "__clear__"
-				_close_pipeline_editor()
-				st.rerun()
-
-	with editor_col:
-		st.markdown("### Editor")
-		editor_mode = st.session_state.get("pipeline_editor_mode")
-		if editor_mode not in {"create", "edit"}:
-			st.caption("Choose New pipeline or Edit selected to open the right-side editor.")
-		else:
-			with st.container(border=True):
-				delete_request = st.session_state.pop("pipeline_editor_delete_request", None)
-				if isinstance(delete_request, int):
-					_delete_pipeline_step(delete_request)
-					st.rerun()
-
-				head_col1, head_col2 = st.columns([3, 2])
-				with head_col1:
-					pipeline_name = st.text_input("Pipeline name", key="pipeline_editor_name", placeholder="speech_cleanup")
-				with head_col2:
-					step_count = int(
-						st.number_input(
-							"Number of steps",
-							min_value=1,
-							max_value=12,
-							value=int(st.session_state.get("pipeline_editor_step_count", 1)),
-							step=1,
-							key="pipeline_editor_step_count",
-						)
-					)
-
-				st.caption("Choose an action for each step, then configure options under it.")
-
-				steps: list[str] = []
-				step_options_by_index: dict[str, dict[str, object]] = {}
-
-				for order_index in range(step_count):
-					with st.container(border=True):
-						step_col, delete_col = st.columns([5, 1])
-						with step_col:
-							step = st.selectbox(
-								f"Step {order_index + 1}",
-								options=PIPELINE_STEP_ORDER,
-								format_func=lambda action: f"{_pipeline_action_label(action)} ({action})",
-								key=f"pipeline_editor_step_{order_index}",
-							)
-						with delete_col:
-							st.button(
-								"✕",
-								key=f"pipeline_editor_delete_step_{order_index}",
-								disabled=step_count <= 1,
-								on_click=_request_delete_pipeline_step,
-								args=(order_index,),
-							)
-						steps.append(step)
-						st.caption("Step options")
-						options = _render_step_options_editor(step, order_index, project)
-						if options:
-							step_options_by_index[str(order_index)] = options
-
-				save_col, cancel_col = st.columns(2)
-				if save_col.button("Save pipeline", type="primary"):
-					clean_name = pipeline_name.strip()
-					if not clean_name:
-						st.error("Pipeline name is required.")
-					else:
-						existing_names = {item.name for item in pipelines}
-						original_name = str(st.session_state.get("pipeline_editor_original_name", ""))
-						if editor_mode == "create" and clean_name in existing_names:
-							st.error("A pipeline with this name already exists.")
-						elif editor_mode == "edit" and clean_name != original_name and clean_name in existing_names:
-							st.error("A pipeline with this name already exists.")
-						else:
-							updated = Pipeline(name=clean_name, steps=steps, step_options=step_options_by_index)
-							if editor_mode == "create":
-								pipelines.append(updated)
-							else:
-								pipelines = [updated if item.name == original_name else item for item in pipelines]
-
-							_save_pipelines(project, pipelines)
-							st.session_state["pending_selected_pipeline_name"] = clean_name
-							_close_pipeline_editor()
-							st.rerun()
-
-				if cancel_col.button("Cancel"):
-					_close_pipeline_editor()
-					st.rerun()
+	_render_pipelines_tab_module(project, project_files)
 
 
 def _render_project_workspace(project: Project) -> None:
@@ -1501,9 +1014,24 @@ def _render_project_workspace(project: Project) -> None:
 						help="Rescale the final babble output to prevent clipping.",
 					)
 
+					babble_generation_signature = _babble_generation_signature(
+						project,
+						num_talkers=int(num_talkers),
+						num_female_talkers=None if num_female_talkers is None else int(num_female_talkers),
+						num_male_talkers=None if num_male_talkers is None else int(num_male_talkers),
+						intended_length_seconds=float(intended_length_seconds),
+						target_rms=float(target_rms),
+						peak_normalize=bool(peak_norm),
+					)
+					stored_babble_output = st.session_state.get("babble_generated_output")
+					if stored_babble_output and stored_babble_output.get("signature") != babble_generation_signature:
+						st.session_state.pop("babble_generated_output", None)
+						stored_babble_output = None
+
 				mix_babble_button = st.button("Generate Babble", type="primary", key="mix_babble_button")
 
 				if mix_babble_button:
+					st.session_state.pop("babble_generated_output", None)
 					progress_bar = st.progress(0)
 					status_line = st.empty()
 					console_box = st.empty()
@@ -1530,18 +1058,6 @@ def _render_project_workspace(project: Project) -> None:
 							progress_callback=_append_console,
 						)
 
-						if result.short_source_labels:
-							st.warning(
-								"Some talkers do not have enough unique source duration for the intended length: "
-								+ ", ".join(result.short_source_labels)
-								+ ". Their files were repeated randomly."
-							)
-						if result.unknown_duration_labels:
-							st.warning(
-								"Could not estimate duration for some files while planning: "
-								+ ", ".join(result.unknown_duration_labels)
-								+ ". Full selected files were loaded for those talkers."
-							)
 						if result.repeat_counts_by_label:
 							_append_console(
 								"Random repeats applied for short talkers: "
@@ -1554,26 +1070,6 @@ def _render_project_workspace(project: Project) -> None:
 						_append_console("Encoding output WAV...", progress=90)
 						babble_bytes = _audio_bytes(result.audio, target_sr)
 						_append_console("Babble generation complete.", progress=100)
-
-						st.success(
-							f"Babble generated from {len(result.selected_groups)} talker groups "
-							f"({sum(1 for group in result.selected_groups if group.sex == 'f')} female, "
-							f"{sum(1 for group in result.selected_groups if group.sex == 'm')} male)."
-						)
-
-						st.markdown("#### Selected Talkers")
-						for group, files in zip(result.selected_groups, result.planned_group_files, strict=False):
-							st.caption(f"{group.label}: {', '.join(file_path.name for file_path in files)}")
-
-						st.markdown("### Babble Output")
-						st.audio(babble_bytes, format="audio/wav")
-						st.download_button(
-							label="Download babble",
-							data=babble_bytes,
-							file_name="triton_babble.wav",
-							mime="audio/wav",
-						)
-
 						log_project_event(
 							project.path,
 							"babble_generated",
@@ -1596,9 +1092,36 @@ def _render_project_workspace(project: Project) -> None:
 							},
 						)
 
+						st.session_state["babble_generated_output"] = {
+							"signature": babble_generation_signature,
+							"audio": result.audio,
+							"babble_bytes": babble_bytes,
+							"sample_rate": target_sr,
+							"num_talkers": int(num_talkers),
+							"num_female_talkers": None if num_female_talkers is None else int(num_female_talkers),
+							"num_male_talkers": None if num_male_talkers is None else int(num_male_talkers),
+							"intended_length_seconds": float(intended_length_seconds),
+							"target_rms": float(target_rms),
+							"peak_normalize": bool(peak_norm),
+							"selected_groups": [
+								{"label": group.label, "sex": group.sex, "index": int(group.index)}
+								for group in result.selected_groups
+							],
+							"planned_group_files": [
+								[str(file_path.resolve()) for file_path in files] for files in result.planned_group_files
+							],
+							"short_source_labels": list(result.short_source_labels),
+							"unknown_duration_labels": list(result.unknown_duration_labels),
+							"repeat_counts_by_label": dict(result.repeat_counts_by_label),
+						}
+
 					except Exception as exc:
 						_append_console(f"Babble generation failed: {exc}", progress=100)
 						st.error(f"Babble generation failed: {exc}")
+
+				stored_babble_output = st.session_state.get("babble_generated_output")
+				if stored_babble_output and stored_babble_output.get("signature") == babble_generation_signature:
+					_render_saved_babble_output(project, stored_babble_output)
 
 	with transcribe_tab:
 		st.markdown("### Transcribe")

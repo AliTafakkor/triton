@@ -1,0 +1,110 @@
+:root {
+	--bg-top: #06141f;
+	--bg-mid: #0e3040;
+	--bg-bottom: #d7e8ea;
+	--panel: rgba(7, 30, 43, 0.74);
+	--panel-border: rgba(143, 205, 206, 0.22);
+	--panel-soft: rgba(250, 252, 252, 0.06);
+	--accent: #ff9f1c;
+	--accent-soft: #ffd6a0;
+	--ink: #ebf6f7;
+	--muted: #b7d0d4;
+	--hero-start: rgba(4, 27, 39, 0.92);
+	--hero-end: rgba(14, 61, 78, 0.88);
+	--hero-kicker: #ffd6a0;
+	--hero-body: #cbe2e5;
+	--hero-pill-bg: rgba(255, 159, 28, 0.16);
+	--hero-pill-text: #ffe9c7;
+	--card-top-bg: rgba(255, 255, 255, 0.06);
+	--card-subtle-text: #cbe2e5;
+	--metric-start: rgba(9, 40, 55, 0.95);
+	--metric-end: rgba(9, 40, 55, 0.7);
+}
+
+html[data-theme="light"], body[data-theme="light"], [data-theme="light"] {
+	--bg-top: #06141f !important;
+	--bg-mid: #0e3040 !important;
+	--bg-bottom: #d7e8ea !important;
+	--panel: rgba(7, 30, 43, 0.74) !important;
+	--panel-border: rgba(143, 205, 206, 0.22) !important;
+	--panel-soft: rgba(250, 252, 252, 0.06) !important;
+	--ink: #ebf6f7 !important;
+	--muted: #b7d0d4 !important;
+	--hero-start: rgba(4, 27, 39, 0.92) !important;
+	--hero-end: rgba(14, 61, 78, 0.88) !important;
+	--hero-kicker: #ffd6a0 !important;
+	--hero-body: #cbe2e5 !important;
+	--hero-pill-bg: rgba(255, 159, 28, 0.16) !important;
+	--hero-pill-text: #ffe9c7 !important;
+	--card-top-bg: rgba(255, 255, 255, 0.06) !important;
+	--card-subtle-text: #cbe2e5 !important;
+	--metric-start: rgba(9, 40, 55, 0.95) !important;
+	--metric-end: rgba(9, 40, 55, 0.7) !important;
+}
+
+.stApp {
+	background:
+		radial-gradient(circle at top left, rgba(255, 159, 28, 0.16), transparent 30%),
+		linear-gradient(180deg, var(--bg-top) 0%, var(--bg-mid) 45%, #153e50 72%, var(--bg-bottom) 140%);
+}
+
+[data-testid="stHeader"] {
+	background: transparent;
+}
+
+[data-testid="stSidebar"] {
+	background: rgba(5, 20, 33, 0.9);
+	border-right: 1px solid rgba(143, 205, 206, 0.18);
+}
+
+h1, h2, h3, h4, h5, h6, p, label, div, span {
+	color: var(--ink) !important;
+}
+
+div[data-testid="stMetric"] {
+	background: linear-gradient(180deg, var(--metric-start), var(--metric-end));
+	border: 1px solid var(--panel-border);
+	padding: 16px;
+	border-radius: 18px;
+	box-shadow: 0 18px 40px rgba(2, 10, 16, 0.22);
+}
+
+.stButton > button, .stDownloadButton > button, button[kind="primary"] {
+	background: linear-gradient(135deg, #ff9f1c, #ffbf69) !important;
+	color: #08202c !important;
+	border: none !important;
+	border-radius: 999px !important;
+	font-weight: 700 !important;
+	box-shadow: 0 12px 24px rgba(255, 159, 28, 0.28);
+}
+
+.stTextInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea {
+	background: rgba(255, 255, 255, 0.06) !important;
+	border-radius: 14px !important;
+}
+
+.stFileUploader, .stAudio, .stForm {
+	background: var(--panel);
+	border: 1px solid var(--panel-border);
+	border-radius: 20px;
+	padding: 12px;
+	box-shadow: 0 18px 40px rgba(2, 10, 16, 0.16);
+}
+
+div[data-testid="stExpander"] {
+	border: 1px solid var(--panel-border);
+	border-radius: 16px;
+	background: var(--panel);
+}
+
+button[data-baseweb="tab"] {
+	background: rgba(255, 255, 255, 0.06);
+	border-radius: 999px;
+	padding: 8px 18px;
+	border: 1px solid transparent;
+}
+
+button[data-baseweb="tab"][aria-selected="true"] {
+	background: rgba(255, 159, 28, 0.22);
+	border: 1px solid rgba(255, 159, 28, 0.3);
+}

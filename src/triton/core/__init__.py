@@ -46,6 +46,7 @@ from triton.core.project import (
     save_file_labels,
     set_file_label,
     get_file_label,
+    save_project_generated_audio,
 )
 from triton.core.pipeline_runtime import (
     PIPELINE_ACTIONS,
@@ -116,6 +117,7 @@ __all__ = [
     "save_file_labels",
     "set_file_label",
     "get_file_label",
+    "save_project_generated_audio",
     "PIPELINE_ACTIONS",
     "PIPELINE_STEP_ORDER",
     "PIPELINE_DEFAULT_STEP",

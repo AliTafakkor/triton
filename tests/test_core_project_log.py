@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import json
+
+import numpy as np
+
 from triton.core.project import (
 	add_project_file,
 	create_project,
@@ -8,8 +12,10 @@ from triton.core.project import (
 	log_project_event,
 	read_project_log,
 	rename_project_file,
+	save_project_generated_audio,
 	set_project_file_labels,
 )
+from triton.core.io import sidecar_path
 
 
 def test_project_log_records_creation(tmp_path) -> None:
@@ -51,3 +57,26 @@ def test_bulk_file_label_assignment(tmp_path) -> None:
 
 	labels = load_file_labels(project.path)
 	assert labels == {"one.wav": "bab-f1", "two.wav": "bab-f1"}
+
+
+def test_project_babble_artifact_writes_sidecar_and_label(tmp_path) -> None:
+	project = create_project(tmp_path / "demo", sample_rate=16000, channel_mode="mono")
+	audio = np.zeros(1600, dtype=np.float32)
+	out_path = save_project_generated_audio(
+		project.path,
+		"babble.wav",
+		audio,
+		16000,
+		label="bab-t4",
+		source={"type": "project_babble", "project_path": str(project.path.resolve())},
+		actions=[{"step": "generate_project_babble", "options": {"num_talkers": 4}}],
+		extra={"babble": {"num_talkers": 4, "target_rms": 0.1}},
+	)
+
+	labels = load_file_labels(project.path)
+	assert labels[out_path.name] == "bab-t4"
+
+	payload = json.loads(sidecar_path(out_path).read_text(encoding="utf-8"))
+	assert payload["source"]["type"] == "project_babble"
+	assert payload["actions"][0]["step"] == "generate_project_babble"
+	assert payload["extra"]["babble"]["num_talkers"] == 4

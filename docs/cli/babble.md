@@ -19,6 +19,8 @@ The babble workflow is:
 - if a talker is short, repeat that talker's files randomly until target length is reached
 - mix the resulting talker tracks and optionally peak-normalize the output
 
+When Babble output is added back into a project from the GUI, Triton stores it as a derivative artifact labeled `bab-t#`, where `#` is the number of talkers used. The derivative is written with a provenance sidecar that records the source files and babble generation parameters.
+
 This is intended for speech-in-noise research, cocktail-party scenarios, and transcription stress testing.
 
 ## Label Convention
@@ -125,6 +127,7 @@ labels_used = [g.label for g in result.selected_groups]
 - If a talker does not have enough unique source material, files are repeated randomly to reach target length.
 - Talker groups are selected from the project metadata, so files do not need to be copied anywhere else.
 - GUI and CLI use the same core babble generation function and therefore share identical selection and mixing behavior.
+- GUI babble generation can also persist the output back into the project with a sidecar so the derivative remains traceable.
 
 ## See Also
 
