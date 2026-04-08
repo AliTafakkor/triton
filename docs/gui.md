@@ -28,7 +28,7 @@ When the app opens, you start from a project launcher:
 - **Open**: open an existing project directory from anywhere on disk
 - **Create**: create a new project with canonical audio settings (sample rate and channel mode)
 
-When creating a project, you can also define spectrogram defaults from the UI (type and parameters). Those values are persisted into `triton.toml` under `[spectrogram]`.
+When creating a project, you define the full audio spec: sample rate, channel mode (mono/stereo), bit depth (8/16/24/32), and file format (wav/flac/ogg). You can also set spectrogram defaults (type and parameters). All settings are persisted into `triton.toml`.
 
 ## Project Structure
 
@@ -50,22 +50,50 @@ The Manage and Explore Files tab is the default project workspace entry point fo
 
 ### Import Files
 
-- import one or more audio files into project raw storage (`data/raw`)
+- import one or more audio files; originals are saved to `data/raw/` and a normalized copy (matching the project spec) is written to `data/normalized/` automatically
+- optionally set a filename prefix to prepend to all imported files (useful when different sources share the same original filenames)
 - optionally assign one label to the full upload batch during import
-- view files in a compact list with metadata
+- view files in a compact list with metadata (name, size, format, labels)
 - play audio inline per file
-- rename or remove files
-- open a precomputed spectrogram per file in the right-side spectrogram panel
+- rename or remove files (also removes the matching raw counterpart)
+- open a precomputed spectrogram per file in the right-side spectrogram panel (spectrogram is generated from the normalized file)
 
-After importing files, the file browser selection and upload widget are automatically reset to allow for a clean next import.
+After importing, the file browser selection and upload widget are automatically reset to allow for a clean next import.
 
-### Rename Labels
+### Label Files
 
-Rename an existing label to apply the new name to all files that currently have that label. This is useful for:
+Each file in the list has a **Label** text field. Enter one or more comma-separated labels (e.g. `bab-f1, studio`). Labels are saved immediately when you commit the field (press Enter or tab away).
+
+- The **Filter by label** dropdown filters the list; select `(None)` to show only files with no labels.
+- Label counts are shown in the Manage Labels expander alongside each label name.
+
+### Manage Labels
+
+The **Manage Labels** expander (above the file list) provides:
+
+#### Rename a label
+
+Rename an existing label to apply the new name to all files that currently have that label. Useful for:
 
 - correcting label typos across multiple files
 - reorganizing labels (e.g., renaming all `talker` labels to `bab-f1`)
 - preparing files for babble generation with consistent naming (e.g., `bab-f1`, `bab-m1`)
+
+On multi-label files, only the target label is replaced; other labels are preserved.
+
+#### Bulk label unlabeled files
+
+Enter a label and click **Apply** to assign it to every file that currently has no labels. Useful for quickly categorizing a freshly imported batch.
+
+### Bulk Delete by Label
+
+You can remove all imported files associated with a label directly in the Manage and Explore Files tab.
+
+- in **Bulk Actions**, select a label in **Delete all files with label**
+- check **Confirm**
+- click **Delete Label Files**
+
+This removes all normalized files with that label, removes matching raw-source files, and updates label metadata.
 
 Imported files automatically trigger spectrogram computation using project defaults from `triton.toml` (`[spectrogram]` section).
 
@@ -179,10 +207,12 @@ Project spectrogram defaults are persisted in `triton.toml`:
 
 These defaults are used when importing files to precompute spectrograms.
 
-## Roadmap Tab
+## RSS Ingest Tab
 
-The roadmap tab tracks next GUI steps:
+Fetch and download podcast episodes directly into a project from an RSS feed.
 
-- project-native import pipeline
-- ingest routed through project storage
-- asset browser and run history backed by metadata
+- enter a feed URL and set a max episode limit
+- optionally filter by publish date (preset ranges: last 7 / 30 / 90 days, or custom dates)
+- preview matching episodes before downloading
+- download episodes; each file is normalized to the project spec and a spectrogram is generated
+- downloaded episodes land in `data/raw/` first, then normalized copies are written to `data/normalized/`

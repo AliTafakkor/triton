@@ -1,185 +1,120 @@
 # Triton 🔱🐚
 An audio signal processing toolkit for speech-in-noise research.
 
-Triton is a modular audio utility designed to standardize stimuli preparation and signal degradation. It provides a robust, reproducible "vessel" for audio manipulation, bridging the gap between raw signal math and accessible lab tools.
+Triton is a modular audio utility designed to standardize stimuli preparation and signal degradation. It provides a project-centric workflow where every audio asset lives inside a project that enforces a single canonical format from the moment a file is imported.
 
-## New Features
+## Features
 
-**Babble Speech Generation**: Mix labeled talker groups such as `bab-f1` and `bab-m1`, normalize each source file to a common RMS, concatenate files per talker, and generate cocktail-party scenarios with balanced male/female selection. Babble generation now runs through a shared core noise-generation function used by both CLI and GUI, with intended-length planning and random repeat of short talkers. Generated babble can also be added back into the project as a derivative labeled `bab-t#` with a provenance sidecar describing the source files and babble parameters.
+**Project-based audio management**: Create a project and define its full audio spec — sample rate, channel mode (mono/stereo), bit depth (8/16/24/32), and output file format (wav/flac/ogg). Every file imported into the project is automatically normalized to that spec.
 
-**File Labeling**: Organize your project files with custom labels (e.g., `bab-f1`, `bab-m1`, `background`), apply one label to a whole upload batch during import, and filter files by label in both CLI and GUI for easier asset management and processing.
+**Automatic normalization on import**: Raw files land in `data/raw/` untouched. A converted copy (matching the project spec) is written to `data/normalized/` automatically, including resampling, channel conversion, and requantization.
 
-## Product Direction
-Triton should evolve toward a project-centric workflow. Instead of treating every command as a one-off file transform, the system should organize work around a project that defines the audio contract for everything inside it.
+**Filename prefix on import**: In the GUI import form, you can set an optional filename prefix (for example, `feedA_`) that is prepended to every uploaded filename to avoid collisions between same-named files from different sources.
 
-Triton supports **Pipeline Matrix** runs: define a pipeline once, then sweep across multiple files and parameter combinations in a single reproducible batch. Generate a CSV of file × parameter combinations and run them all at once, with each row producing isolated outputs for easy comparison and aggregation.
+**Multi-label file organization**: Assign one or more labels to any file (e.g. `bab-f1`, `studio`). Apply a batch label at import, edit labels per file in the GUI using comma-separated values, filter files by label, delete all files with a specific label from the CLI, and use the Manage Labels panel to rename labels or bulk-label all unlabeled files. Labels are stored in `metadata/file_labels.json` as lists.
 
-In that model, a user starts by creating a project and choosing settings such as target sampling rate, channel format (mono or stereo), storage paths, and default processing behavior. After that, any audio brought into the project is normalized to the project specification automatically. The goal is to make downstream operations predictable: degradation, transcription, conversion, mixing, and ingest should all operate on a consistent internal representation.
+**Babble Speech Generation**: Mix labeled talker groups (`bab-f1`, `bab-m1`, …), normalize each source file to a common RMS, concatenate per talker, and generate cocktail-party scenarios with balanced male/female selection. Generated babble is added back to the project as a labeled derivative with a provenance sidecar.
 
-Triton provides multiple normalization strategies:
-- **Peak normalization**: Scale to target peak amplitude (~0.99) for safety headroom
-- **RMS normalization**: Scale to target loudness/energy (duration-independent), ideal for noise mixing and speech processing where consistent SNR is critical
+**Pipeline Matrix**: Define a pipeline once, then sweep across multiple files and parameter combinations in a single reproducible batch. Generate a CSV of file × parameter combinations and run them all at once, with isolated outputs per row for easy comparison and aggregation.
 
-For **audio mixing**, Triton uses symmetric RMS-based SNR scaling:
+**Spectrogram viewer**: Import-time spectrogram generation (STFT / Mel / CQT) with per-project defaults stored in `triton.toml`. The GUI renders interactive Plotly spectrograms with zoom/pan/scroll in the file browser.
+
+## Project Structure
+
+```text
+my-project/
+  triton.toml           ← project config (audio spec, pipelines, spectrogram defaults)
+  data/
+    raw/                ← original imported files (any supported format)
+    normalized/         ← auto-converted to project spec on import
+    derived/            ← pipeline outputs and generated artifacts
+  metadata/
+    file_labels.json    ← multi-label store per file
+    project.log.jsonl   ← append-only audit log of all events
+```
+
+## Project Config (`triton.toml`)
+
+```toml
+[project]
+name = "my-project"
+root = "/path/to/my-project"
+
+[audio]
+sample_rate = 16000
+channels = "mono"
+bit_depth = 16
+format = "wav"
+
+[storage]
+raw = "data/raw"
+normalized = "data/normalized"
+derived = "data/derived"
+metadata = "metadata"
+
+[spectrogram]
+type = "stft"
+n_fft = 1024
+hop_length = 256
+win_length = 1024
+window = "hann"
+n_mels = 128
+fmin = 32.7
+fmax = 8000.0
+power = 2.0
+```
+
+## Workflow
+
+1. **Create a project** — choose sample rate, channels, bit depth, file format.
+2. **Import files** — optionally set a filename prefix, then import; raw originals go to `data/raw/` and normalized copies go to `data/normalized/` automatically.
+3. **Label files** — assign one or more labels per file; filter, rename, and bulk-label from the GUI or CLI.
+4. **Run pipelines** — degrade, convert, mix, and transcribe against project assets.
+5. **Generate babble** — select labeled talker groups and mix cocktail-party noise.
+6. **Inspect outputs** — browse spectrograms, review the audit log, download artifacts.
+
+## Audio Mixing
+
+Triton uses symmetric RMS-based SNR scaling for mixing:
 - Both signals normalized independently to the same RMS level before mixing
 - Target SNR split symmetrically: signal boosted by SNR/2 dB, noise attenuated by SNR/2 dB
 - Result re-normalized to target RMS after mixing, controlling loudness independently of SNR
 - Optional boundary smoothing for multi-segment mixing to avoid abrupt transitions
 
-## Proposed Workflow
-1. Create a project.
-2. Save project settings, including sample rate, mono/stereo policy, and output layout.
-3. Import local files or ingest external sources into that project, optionally applying one label to all files uploaded together.
-4. Convert imported media automatically to the project specification.
-5. Run downstream tasks such as degrade, transcribe, convert, and mix against project-managed assets.
-6. Persist outputs and metadata back into the project so runs are reproducible.
-
-## Development Plan
-### Phase 1: Define the Project Model
-- Introduce a first-class project concept with a project root and a machine-readable config file.
-- Store canonical settings such as sample rate, channel mode, preferred file format, and directory layout.
-- Add a lightweight metadata layer for tracking imported assets and derived outputs.
-
-Possible project structure:
-
-```text
-my-project/
-	triton.toml
-	files/
-		raw/
-		normalized/
-		derived/
-	metadata/
-		assets.json
-		runs.json
-```
-
-The config should answer a simple question for every command: what is the canonical representation of audio in this project?
-
-### Phase 2: Add Project Lifecycle Commands
-- Add CLI commands to create, inspect, and update projects.
-- Example direction:
-	- `triton project init my-project --sr 16000 --channels mono`
-	- `triton project show my-project`
-	- `triton project set my-project --sr 24000`
-- Ensure all file-oriented commands can resolve the active project explicitly or from the current working directory.
-
-### Phase 3: Make Import the Entry Point
-- Add an import workflow for local media.
-- Imported files should be copied or linked into project storage, validated, and converted to canonical project settings.
-- Preserve provenance metadata such as original path, original sample rate, channel count, and conversion history.
-
-This is the step that turns Triton from a toolbox into a managed pipeline.
-
-### Phase 4: Treat Ingest as a Project-Aware Import Source
-- Extend ingest so RSS or other external sources feed directly into a project.
-- Downloaded audio should land in raw storage first, then be normalized into project-managed assets.
-- Attach source metadata such as feed URL, episode title, publication date, and retrieval timestamp.
-
-In practice, ingest should become one way to add files to a project rather than a separate, disconnected feature.
-
-### Phase 5: Make Processing Commands Project-Native
-- Update degrade, transcribe, convert, and mix so they can target project assets by logical identifiers instead of only filesystem paths.
-- Standardize where derived outputs are written and how they are named.
-- Record processing parameters so results can be reproduced later.
-
-Example direction:
-
-```bash
-triton degrade vocode --project my-project --input asset:sentence_001 --preset noise8
-triton transcribe local --project my-project --input asset:moth_episode_03
-```
-
-### Phase 6: Add Reproducibility and UX Improvements
-- Support presets at the project level for common transformations.
-- Add manifest or run-history views so users can see what has been imported and produced.
-- Introduce safe overwrite rules, duplicate handling, and validation warnings when settings change.
-- Keep the GUI aligned to the same project abstraction instead of building separate interface-only logic.
-
-## Design Principles
-- One project defines one canonical audio specification.
-- Import and ingest should normalize data at the boundary, not leave format cleanup to later commands.
-- Downstream processing should operate on stable project assets, not ad hoc file paths whenever possible.
-- Metadata should be captured automatically so provenance and reproducibility do not depend on user memory.
-- CLI and GUI should share the same project model and storage conventions.
-
-## Immediate Implementation Priorities
-1. Define `triton.toml` and the on-disk project layout.
-2. Implement `triton project init` and project resolution helpers.
-3. Add a project-aware import command that converts files to canonical settings.
-4. Refactor ingest to write into projects through the same import pipeline.
-5. Update degrade and transcribe commands to accept `--project` and operate on normalized assets.
-6. Support pipeline matrix generation and execution for parameter sweeps and batch processing.
-
-## Core Components
-The Engine (/core): The foundational Python API for audio math. Contains logic for RMS-based SNR mixing, vocoding, and filtering. Designed to be imported directly into other simulation or modeling projects to ensure consistent signal processing.
-
-The CLI: Built for high-volume batch processing. Allows for rapid transformation of entire audio directories (e.g., degrading a full sentence set to -5dB SNR) via the terminal.
-
-The HTML GUI: A Streamlit-based web dashboard. Offers a drag-and-drop interface for lab members to test degradations, visualize waveforms, and download processed files without writing code.
-
-Why Pixi?
-Reproducibility is the priority. Triton uses Pixi to lock the environment, ensuring that heavy dependencies—like ffmpeg and librosa—behave identically across different operating systems and machines. A single `pixi.lock` file works seamlessly on both macOS (Apple Silicon) and Linux, enabling smooth collaboration and cross-platform development.
-
 ## Pipeline Output Layout
-
-Pipeline runs are written under project-derived storage with explicit run and step boundaries:
 
 ```text
 <project>/
-	data/
-		derived/
-			pipelines/
-				<pipeline_name_key>/
-					run_<UTC timestamp>_<id>/
-						step_01_<step_key>/
-							<input_stem>.wav
-							<input_stem>.wav.json
-						step_02_<step_key>/
-							<input_stem>.wav
-							<input_stem>.wav.json
-						...
+  data/
+    derived/
+      pipelines/
+        <pipeline_name_key>/
+          run_<UTC timestamp>_<id>/
+            step_01_<step_key>/
+              <input_stem>.wav
+              <input_stem>.wav.json     ← provenance sidecar
+            step_02_<step_key>/
+              ...
 ```
 
-- Each click of "Run selected pipeline" creates a distinct `run_<...>` folder.
-- Each step writes outputs into its own `step_<index>_<name>` folder.
-- The final output for a file is the artifact from the last step folder.
+## Sidecar Provenance
 
-## Sidecar Provenance Metadata
-
-Any file generated by Triton should include a JSON sidecar next to the artifact. Sidecars use `<artifact_name><artifact_suffix>.json`, for example:
-
-- `output.wav` -> `output.wav.json`
-- `transcript.txt` -> `transcript.txt.json`
-
-Each sidecar captures:
-
-- artifact identity (path/name/suffix)
-- source reference (source path or source URL/feed)
-- ordered action history with options/details
+Every generated file has a JSON sidecar (`<file>.<ext>.json`) capturing:
+- artifact identity (path, name, suffix)
+- source reference (raw path or ingest URL/feed)
+- ordered action history with parameters
 - generation timestamp and schema version
-
-This makes it possible to trace what file was produced from which source and by what sequence of operations.
 
 ## Spectrograms
 
-Triton now supports project-level default spectrogram settings and import-time spectrogram generation.
+Import-time spectrograms are stored as `<file>.spectrogram.npz` with a `.json` sidecar. The spectrogram panel in the GUI renders the precomputed artifact without recomputing on every page render.
 
-Project defaults live in `triton.toml` under `[spectrogram]`:
+## Why Pixi?
 
-- `type` (`stft`, `mel`, `cqt`)
-- `n_fft`, `hop_length`, `win_length`, `window`
-- `n_mels`, `fmin`, `fmax`, `power`
+Triton uses Pixi to lock the full environment — including heavy native dependencies like `ffmpeg`, `librosa`, and `soundfile` — ensuring identical behavior across macOS (Apple Silicon) and Linux via a single `pixi.lock` file.
 
-When audio is imported in the GUI Import tab, Triton computes and stores a spectrogram artifact per file using those defaults. The same import form also lets you assign one label to the entire batch of uploaded files.
+## Core Components
 
-Artifacts:
-
-- `<file>.spectrogram.npz`
-- `<file>.spectrogram.npz.json` (sidecar provenance)
-
-The `Spec` action in the Import list opens the precomputed artifact in the right-side spectrogram panel rather than recomputing every render.
-
-The panel uses an interactive Plotly spectrogram (zoom/pan/scroll) with visible time/frequency axes and an inferno colormap. For large files, the displayed grid is downsampled for performance.
-
-The GUI is configured to run in dark mode by default via `.streamlit/config.toml`.
+- **`/core`** — foundational Python API: RMS mixing, vocoding, filtering, conversion, spectrogram, project model
+- **CLI** — batch processing; file management, babble generation, pipeline runs, matrix sweeps
+- **GUI** — Streamlit dashboard: drag-and-drop import, spectrogram viewer, pipeline builder, label manager, babble mixer

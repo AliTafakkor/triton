@@ -8,7 +8,7 @@
 
 From the GUI dashboard:
 
-- Create a project with sample rate and channel settings (mono/stereo), or
+- Create a project with sample rate, channel mode (mono/stereo), bit depth (8/16/24/32), and file format (wav/flac/ogg), or
 - Open an existing project from anywhere on disk, or
 - Re-open from recent projects.
 
@@ -16,15 +16,17 @@ From the GUI dashboard:
 
 In the **Manage and Explore Files** tab:
 
-- Import audio files into project raw storage
+- Import audio files — originals go to `data/raw/`, normalized copies go to `data/normalized/` automatically
+- Optionally set a filename prefix during import to avoid collisions across sources with the same filename
 - Apply one label to all files uploaded together
-- Rename files
-- **Label files** (e.g., `bab-f1`, `bab-m1`, `background`) for organization
-- **Rename labels** to apply a new label to all files with the old label (useful for bulk corrections or preparations)
-- **Filter by label** to view only files with a specific tag
-- Remove files
+- Rename files (also renames the matching raw counterpart)
+- **Label files** with one or more comma-separated labels (e.g., `bab-f1, studio`) for organization
+- **Rename labels** to apply a new label to all files with the old label (multi-label files: only the target label is replaced)
+- **Bulk label unlabeled files** — apply a single label to all files with no labels at once
+- **Filter by label** to view only files with a specific tag; use `(None)` to show only unlabeled files
+- Remove files (also removes matching raw counterpart and spectrogram artifacts)
 - Play files inline
-- View precomputed spectrograms
+- View precomputed spectrograms (generated at import time from the normalized file)
 
 ## 4) Generate babble speech (mix multiple talkers)
 
@@ -149,7 +151,7 @@ See [Babble](cli/babble.md) for full command reference.
 - Current CLI commands remain path-oriented; project-first CLI commands can be layered on top of the shared core module.
 - Pipeline runs are grouped by run folder, and each step writes to its own step folder under `data/derived/pipelines/...`.
 - Generated artifacts include sidecar provenance JSON files (`<artifact>.<suffix>.json`) to record source and action history.
-- Imported files get spectrogram artifacts generated from project defaults in `triton.toml` (`[spectrogram]`).
+- Imported files are automatically normalized to the project spec (sample rate, channels, bit depth, file format) and saved to `data/normalized/`. Spectrogram artifacts are generated from the normalized file using project defaults in `triton.toml` (`[spectrogram]`).
 - Pipeline Matrix allows reproducible batch processing by combining multiple files and parameter combinations in a single run.
 - File labels persist in `metadata/file_labels.json` and work across CLI and GUI interfaces.
 - Babble generation in GUI and CLI uses the same shared core function in `triton.degrade.noise_generator`.
