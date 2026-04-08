@@ -4,8 +4,8 @@ import numpy as np
 
 from triton.core.mixer import mix_babble_from_segments
 from triton.core.project import (
-	add_project_file,
 	create_project,
+	project_normalized_dir,
 	select_babble_talker_groups,
 	set_file_label,
 )
@@ -13,6 +13,8 @@ from triton.core.project import (
 
 def test_select_babble_talker_groups_balances_by_sex(tmp_path) -> None:
 	project = create_project(tmp_path / "demo", sample_rate=16000, channel_mode="mono")
+	norm_dir = project_normalized_dir(project.path)
+	norm_dir.mkdir(parents=True, exist_ok=True)
 
 	for filename, label in [
 		("f1.wav", "bab-f1"),
@@ -21,7 +23,8 @@ def test_select_babble_talker_groups_balances_by_sex(tmp_path) -> None:
 		("m2.wav", "bab-m2"),
 		("m3.wav", "bab-m3"),
 	]:
-		path = add_project_file(project.path, filename, b"RIFF")
+		path = norm_dir / filename
+		path.write_bytes(b"RIFF")
 		set_file_label(project.path, path, label)
 
 	selected = select_babble_talker_groups(project.path, num_talkers=3)
@@ -33,6 +36,8 @@ def test_select_babble_talker_groups_balances_by_sex(tmp_path) -> None:
 
 def test_select_babble_talker_groups_explicit_split(tmp_path) -> None:
 	project = create_project(tmp_path / "demo", sample_rate=16000, channel_mode="mono")
+	norm_dir = project_normalized_dir(project.path)
+	norm_dir.mkdir(parents=True, exist_ok=True)
 
 	for filename, label in [
 		("f1.wav", "bab-f1"),
@@ -40,7 +45,8 @@ def test_select_babble_talker_groups_explicit_split(tmp_path) -> None:
 		("m1.wav", "bab-m1"),
 		("m2.wav", "bab-m2"),
 	]:
-		path = add_project_file(project.path, filename, b"RIFF")
+		path = norm_dir / filename
+		path.write_bytes(b"RIFF")
 		set_file_label(project.path, path, label)
 
 	selected = select_babble_talker_groups(

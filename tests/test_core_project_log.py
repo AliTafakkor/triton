@@ -7,12 +7,15 @@ import numpy as np
 from triton.core.project import (
 	add_project_file,
 	create_project,
+	delete_project_files_by_label,
 	delete_project_file,
 	load_file_labels,
 	log_project_event,
+	project_normalized_dir,
 	read_project_log,
 	rename_project_file,
 	save_project_generated_audio,
+	set_file_label,
 	set_project_file_labels,
 )
 from triton.core.io import sidecar_path
@@ -56,7 +59,7 @@ def test_bulk_file_label_assignment(tmp_path) -> None:
 	set_project_file_labels(project.path, [first, second], "bab-f1")
 
 	labels = load_file_labels(project.path)
-	assert labels == {"one.wav": "bab-f1", "two.wav": "bab-f1"}
+	assert labels == {"one": ["bab-f1"], "two": ["bab-f1"]}
 
 
 def test_project_babble_artifact_writes_sidecar_and_label(tmp_path) -> None:
@@ -74,9 +77,32 @@ def test_project_babble_artifact_writes_sidecar_and_label(tmp_path) -> None:
 	)
 
 	labels = load_file_labels(project.path)
-	assert labels[out_path.name] == "bab-t4"
+	assert labels[out_path.stem] == ["bab-t4"]
 
 	payload = json.loads(sidecar_path(out_path).read_text(encoding="utf-8"))
 	assert payload["source"]["type"] == "project_babble"
 	assert payload["actions"][0]["step"] == "generate_project_babble"
 	assert payload["extra"]["babble"]["num_talkers"] == 4
+
+
+def test_delete_project_files_by_label_removes_matching_files(tmp_path) -> None:
+	project = create_project(tmp_path / "demo", sample_rate=16000, channel_mode="mono")
+	norm_dir = project_normalized_dir(project.path)
+
+	keep = norm_dir / "keep.wav"
+	delete_me = norm_dir / "delete_me.wav"
+	keep.write_bytes(b"RIFF")
+	delete_me.write_bytes(b"RIFF")
+
+	set_file_label(project.path, keep, "keep")
+	set_file_label(project.path, delete_me, "drop")
+
+	deleted = delete_project_files_by_label(project.path, "drop")
+
+	assert [path.name for path in deleted] == ["delete_me.wav"]
+	assert not delete_me.exists()
+	assert keep.exists()
+
+	labels = load_file_labels(project.path)
+	assert "delete_me" not in labels
+	assert labels["keep"] == ["keep"]

@@ -7,13 +7,15 @@ import numpy as np
 from triton.core.io import save_audio
 from triton.core.pipeline_matrix import generate_matrix_csv, run_matrix_csv
 from triton.core.pipeline_runtime import new_pipeline_run_id
-from triton.core.project import Pipeline, create_project
+from triton.core.project import Pipeline, create_project, project_normalized_dir
 
 
 def test_generate_matrix_csv_builds_cartesian_product(tmp_path) -> None:
 	project = create_project(tmp_path / "demo", sample_rate=16000, channel_mode="mono")
-	source_a = project.path / "data" / "raw" / "a.wav"
-	source_b = project.path / "data" / "raw" / "b.wav"
+	norm_dir = project_normalized_dir(project.path)
+	norm_dir.mkdir(parents=True, exist_ok=True)
+	source_a = norm_dir / "a.wav"
+	source_b = norm_dir / "b.wav"
 	audio = np.zeros(1600, dtype=np.float32)
 	save_audio(source_a, audio, 16000)
 	save_audio(source_b, audio, 16000)
@@ -39,7 +41,9 @@ def test_generate_matrix_csv_builds_cartesian_product(tmp_path) -> None:
 
 def test_run_matrix_csv_creates_row_subfolders(tmp_path) -> None:
 	project = create_project(tmp_path / "demo", sample_rate=16000, channel_mode="mono")
-	source_path = project.path / "data" / "raw" / "sample.wav"
+	norm_dir = project_normalized_dir(project.path)
+	norm_dir.mkdir(parents=True, exist_ok=True)
+	source_path = norm_dir / "sample.wav"
 	t = np.arange(1600, dtype=np.float32) / 16000.0
 	audio = np.sin(2 * np.pi * 220 * t).astype(np.float32)
 	save_audio(source_path, audio, 16000)
