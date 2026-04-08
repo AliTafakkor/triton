@@ -11,8 +11,10 @@ from pathlib import Path
 from typing import Literal
 
 import numpy as np
+import soundfile as sf
 
-from triton.core.io import save_audio
+from triton.core.conversion import resample, to_mono, to_stereo
+from triton.core.io import load_audio, save_audio
 
 
 ChannelMode = Literal["mono", "stereo"]
@@ -37,16 +39,30 @@ DEFAULT_SPECTROGRAM_SETTINGS: dict[str, object] = {
 }
 
 
+_BIT_DEPTH_TO_SUBTYPE: dict[int, str] = {
+	8: "PCM_U8",
+	16: "PCM_16",
+	24: "PCM_24",
+	32: "PCM_32",
+}
+
+
 @dataclass(slots=True)
 class Project:
 	name: str
 	path: Path
 	sample_rate: int
 	channel_mode: ChannelMode
+	bit_depth: int = 16
+	file_format: str = "wav"
 
 	@property
 	def raw_dir(self) -> Path:
 		return project_raw_dir(self.path)
+
+	@property
+	def normalized_dir(self) -> Path:
+		return project_normalized_dir(self.path)
 
 	@classmethod
 	def load(cls, project_dir: Path) -> Project:
@@ -62,6 +78,8 @@ class Project:
 			path=project_dir,
 			sample_rate=int(audio.get("sample_rate", 16000)),
 			channel_mode=str(audio.get("channels", "mono")),
+			bit_depth=int(audio.get("bit_depth", 16)),
+			file_format=str(audio.get("format", "wav")),
 		)
 
 	@classmethod
@@ -70,6 +88,8 @@ class Project:
 		project_dir: Path,
 		sample_rate: int,
 		channel_mode: ChannelMode,
+		bit_depth: int = 16,
+		file_format: str = "wav",
 		spectrogram_settings: dict[str, object] | None = None,
 	) -> Project:
 		project_dir.mkdir(parents=True, exist_ok=True)
@@ -78,6 +98,8 @@ class Project:
 			project_dir,
 			sample_rate=sample_rate,
 			channel_mode=channel_mode,
+			bit_depth=bit_depth,
+			file_format=file_format,
 			spectrogram_settings=spectrogram_settings,
 		)
 		log_project_event(
@@ -86,6 +108,8 @@ class Project:
 			{
 				"sample_rate": int(sample_rate),
 				"channel_mode": str(channel_mode),
+				"bit_depth": int(bit_depth),
+				"file_format": str(file_format),
 				"spectrogram_settings": load_project_spectrogram_settings(project_dir),
 			},
 		)
@@ -106,6 +130,8 @@ class Project:
 			"path": str(self.path),
 			"sample_rate": self.sample_rate,
 			"channel_mode": self.channel_mode,
+			"bit_depth": self.bit_depth,
+			"file_format": self.file_format,
 		}
 
 
@@ -132,6 +158,10 @@ def project_raw_dir(project_dir: Path) -> Path:
 	return project_dir / "data" / "raw"
 
 
+def project_normalized_dir(project_dir: Path) -> Path:
+	return project_dir / "data" / "normalized"
+
+
 def project_log_path(project_dir: Path) -> Path:
 	return project_dir / "metadata" / "project.log.jsonl"
 
@@ -147,6 +177,8 @@ def write_project_config(
 	project_dir: Path,
 	sample_rate: int,
 	channel_mode: ChannelMode,
+	bit_depth: int = 16,
+	file_format: str = "wav",
 	spectrogram_settings: dict[str, object] | None = None,
 ) -> None:
 	merged_spectrogram = dict(DEFAULT_SPECTROGRAM_SETTINGS)
@@ -160,6 +192,8 @@ def write_project_config(
 		project_root=project_dir,
 		sample_rate=sample_rate,
 		channel_mode=channel_mode,
+		bit_depth=bit_depth,
+		file_format=file_format,
 		spectrogram_settings=merged_spectrogram,
 		pipelines=[],
 	)
@@ -201,12 +235,16 @@ def update_project_spectrogram_settings(project_dir: Path, spectrogram_settings:
 	project_name = str(project.get("name", project_dir.name))
 	sample_rate = int(audio.get("sample_rate", 16000))
 	channel_mode = str(audio.get("channels", "mono"))
+	bit_depth = int(audio.get("bit_depth", 16))
+	file_format = str(audio.get("format", "wav"))
 
 	config_text = _serialize_project_config(
 		project_name=project_name,
 		project_root=project_dir,
 		sample_rate=sample_rate,
 		channel_mode=channel_mode,
+		bit_depth=bit_depth,
+		file_format=file_format,
 		spectrogram_settings=spectrogram_settings,
 		pipelines=pipelines,
 	)
@@ -308,6 +346,8 @@ def save_project_pipelines(project_dir: Path, pipelines: list[Pipeline]) -> None
 	project_name = str(project.get("name", project_dir.name))
 	sample_rate = int(audio.get("sample_rate", 16000))
 	channel_mode = str(audio.get("channels", "mono"))
+	bit_depth = int(audio.get("bit_depth", 16))
+	file_format = str(audio.get("format", "wav"))
 	spectrogram_settings = load_project_spectrogram_settings(project_dir)
 
 	config_text = _serialize_project_config(
@@ -315,6 +355,8 @@ def save_project_pipelines(project_dir: Path, pipelines: list[Pipeline]) -> None
 		project_root=project_dir,
 		sample_rate=sample_rate,
 		channel_mode=channel_mode,
+		bit_depth=bit_depth,
+		file_format=file_format,
 		spectrogram_settings=spectrogram_settings,
 		pipelines=pipelines,
 	)
@@ -330,12 +372,16 @@ def create_project(
 	project_dir: Path,
 	sample_rate: int,
 	channel_mode: ChannelMode,
+	bit_depth: int = 16,
+	file_format: str = "wav",
 	spectrogram_settings: dict[str, object] | None = None,
 ) -> Project:
 	return Project.create(
 		project_dir,
 		sample_rate=sample_rate,
 		channel_mode=channel_mode,
+		bit_depth=bit_depth,
+		file_format=file_format,
 		spectrogram_settings=spectrogram_settings,
 	)
 
@@ -362,37 +408,137 @@ def register_recent_project(project_dir: Path, project_name: str) -> None:
 	save_recent_projects(projects[:RECENT_PROJECTS_LIMIT])
 
 
-def list_project_files(project_dir: Path) -> list[Path]:
-	raw_dir = project_raw_dir(project_dir)
-	if not raw_dir.exists():
+def list_normalized_project_files(project_dir: Path) -> list[Path]:
+	"""List normalized audio files in the project's data/normalized directory."""
+	norm_dir = project_normalized_dir(project_dir)
+	if not norm_dir.exists():
 		return []
-
 	return sorted(
-		[path for path in raw_dir.iterdir() if path.is_file() and path.suffix.lower() in SUPPORTED_AUDIO_SUFFIXES],
+		[path for path in norm_dir.iterdir() if path.is_file() and path.suffix.lower() in SUPPORTED_AUDIO_SUFFIXES],
 		key=lambda path: path.name.lower(),
 	)
 
 
-def add_project_file(project_dir: Path, filename: str, content: bytes) -> Path:
+def normalize_project_file(project_dir: Path, raw_path: Path, project: Project) -> Path:
+	"""Normalize a raw file to the project spec and save to data/normalized/.
+
+	Converts sample rate, channel mode, and bit depth. Output format is determined
+	by the project's ``file_format`` setting. The normalized file shares the stem
+	of the raw file and uses the project format as its extension.
+
+	Returns:
+		Path to the normalized file.
+	"""
+	norm_dir = project_normalized_dir(project_dir)
+	norm_dir.mkdir(parents=True, exist_ok=True)
+
+	ext = f".{project.file_format.lstrip('.')}"
+	norm_path = norm_dir / (raw_path.stem + ext)
+
+	audio, orig_sr = load_audio(raw_path, sr=None, mono=False)
+
+	if orig_sr != project.sample_rate:
+		audio = resample(audio, orig_sr=orig_sr, target_sr=project.sample_rate)
+
+	if project.channel_mode == "mono":
+		audio = to_mono(audio)
+	else:
+		audio = to_stereo(audio)
+		if audio.ndim == 2 and audio.shape[0] == 2:
+			audio = audio.T  # (2, N) → (N, 2) for soundfile
+
+	subtype = _BIT_DEPTH_TO_SUBTYPE.get(project.bit_depth, "PCM_16")
+	sf.write(norm_path, audio, project.sample_rate, subtype=subtype)
+
+	log_project_event(
+		project_dir,
+		"file_normalized",
+		{
+			"raw": raw_path.name,
+			"normalized": norm_path.name,
+			"sample_rate": project.sample_rate,
+			"channel_mode": project.channel_mode,
+			"bit_depth": project.bit_depth,
+			"file_format": project.file_format,
+		},
+	)
+	return norm_path
+
+
+def add_project_file(
+	project_dir: Path,
+	filename: str,
+	content: bytes,
+	*,
+	filename_prefix: str = "",
+) -> Path:
 	raw_dir = project_raw_dir(project_dir)
 	raw_dir.mkdir(parents=True, exist_ok=True)
-	target_path = raw_dir / filename
+	clean_filename = sanitize_filename(filename)
+	clean_prefix = sanitize_import_prefix(filename_prefix)
+	target_name = f"{clean_prefix}{clean_filename}" if clean_prefix else clean_filename
+	target_path = raw_dir / target_name
 	target_path.write_bytes(content)
 	log_project_event(
 		project_dir,
 		"file_imported",
-		{"name": target_path.name, "path": str(target_path.resolve()), "size_bytes": int(target_path.stat().st_size)},
+		{
+			"name": target_path.name,
+			"original_name": clean_filename,
+			"filename_prefix": clean_prefix,
+			"path": str(target_path.resolve()),
+			"size_bytes": int(target_path.stat().st_size),
+		},
 	)
 	return target_path
 
 
 def delete_project_file(file_path: Path) -> None:
-	if file_path.exists() and file_path.is_file():
-		project_dir = file_path.parents[2] if len(file_path.parents) >= 3 else file_path.parent
-		file_name = file_path.name
-		resolved = str(file_path.resolve())
-		file_path.unlink()
-		log_project_event(project_dir, "file_deleted", {"name": file_name, "path": resolved})
+	if not (file_path.exists() and file_path.is_file()):
+		return
+	project_dir = file_path.parents[2] if len(file_path.parents) >= 3 else file_path.parent
+	file_name = file_path.name
+	file_path.unlink()
+
+	# Also delete the corresponding raw file (any extension with the same stem)
+	raw_dir = project_raw_dir(project_dir)
+	for raw_candidate in raw_dir.glob(f"{file_path.stem}.*"):
+		if raw_candidate.is_file() and raw_candidate.suffix.lower() in SUPPORTED_AUDIO_SUFFIXES:
+			raw_candidate.unlink()
+
+	log_project_event(project_dir, "file_deleted", {"name": file_name, "path": str(file_path.resolve())})
+
+
+def delete_project_files_by_label(project_dir: Path, label: str) -> list[Path]:
+	"""Delete all normalized project files that carry a label.
+
+	Returns:
+		List of deleted normalized file paths.
+	"""
+	clean_label = label.strip()
+	if not clean_label:
+		raise ValueError("Label cannot be empty.")
+
+	files_to_delete = list_project_files(project_dir, label=clean_label)
+	if not files_to_delete:
+		return []
+
+	all_labels = load_file_labels(project_dir)
+	for file_path in files_to_delete:
+		delete_project_file(file_path)
+		all_labels.pop(file_path.stem, None)
+	save_file_labels(project_dir, all_labels)
+
+	log_project_event(
+		project_dir,
+		"files_deleted_by_label",
+		{
+			"label": clean_label,
+			"count": len(files_to_delete),
+			"files": [path.name for path in files_to_delete],
+		},
+	)
+	return files_to_delete
 
 
 def sanitize_filename(name: str) -> str:
@@ -404,6 +550,15 @@ def sanitize_filename(name: str) -> str:
 	return re.sub(r"\s+", " ", cleaned)
 
 
+def sanitize_import_prefix(prefix: str) -> str:
+	cleaned = re.sub(r"\s+", " ", str(prefix).strip())
+	if not cleaned:
+		return ""
+	if "/" in cleaned or "\\" in cleaned:
+		raise ValueError("Filename prefix cannot contain path separators.")
+	return cleaned
+
+
 def rename_project_file(file_path: Path, new_name: str) -> Path:
 	clean_name = sanitize_filename(new_name)
 	target_path = file_path.with_name(clean_name)
@@ -413,6 +568,20 @@ def rename_project_file(file_path: Path, new_name: str) -> Path:
 		raise ValueError("Renamed files must keep a supported audio extension.")
 	renamed = file_path.rename(target_path)
 	project_dir = renamed.parents[2] if len(renamed.parents) >= 3 else renamed.parent
+
+	# Also rename the corresponding raw file (same stem, any audio extension)
+	new_stem = target_path.stem
+	raw_dir = project_raw_dir(project_dir)
+	for raw_candidate in raw_dir.glob(f"{file_path.stem}.*"):
+		if raw_candidate.is_file() and raw_candidate.suffix.lower() in SUPPORTED_AUDIO_SUFFIXES:
+			raw_candidate.rename(raw_candidate.with_name(new_stem + raw_candidate.suffix))
+
+	# Migrate label key from old stem to new stem
+	all_labels = load_file_labels(project_dir)
+	if file_path.stem in all_labels:
+		all_labels[new_stem] = all_labels.pop(file_path.stem)
+		save_file_labels(project_dir, all_labels)
+
 	log_project_event(
 		project_dir,
 		"file_renamed",
@@ -426,11 +595,11 @@ def rename_project_file(file_path: Path, new_name: str) -> Path:
 	return renamed
 
 
-def _unique_project_raw_path(project_dir: Path, filename: str) -> Path:
-	"""Return a unique path in the project raw directory for a generated artifact."""
-	raw_dir = project_raw_dir(project_dir)
-	raw_dir.mkdir(parents=True, exist_ok=True)
-	target = raw_dir / sanitize_filename(filename)
+def _unique_project_normalized_path(project_dir: Path, filename: str) -> Path:
+	"""Return a unique path in the project normalized directory for a generated artifact."""
+	norm_dir = project_normalized_dir(project_dir)
+	norm_dir.mkdir(parents=True, exist_ok=True)
+	target = norm_dir / sanitize_filename(filename)
 	if not target.exists():
 		return target
 
@@ -438,7 +607,7 @@ def _unique_project_raw_path(project_dir: Path, filename: str) -> Path:
 	suffix = target.suffix
 	counter = 1
 	while True:
-		candidate = raw_dir / f"{stem}_{counter}{suffix}"
+		candidate = norm_dir / f"{stem}_{counter}{suffix}"
 		if not candidate.exists():
 			return candidate
 		counter += 1
@@ -455,8 +624,8 @@ def save_project_generated_audio(
 	actions: list[dict[str, object]] | None = None,
 	extra: dict[str, object] | None = None,
 ) -> Path:
-	"""Save a generated audio artifact into project storage and label it if requested."""
-	target_path = _unique_project_raw_path(project_dir, filename)
+	"""Save a generated audio artifact into normalized project storage and label it if requested."""
+	target_path = _unique_project_normalized_path(project_dir, filename)
 	save_audio(target_path, audio, sr, source=source, actions=actions, extra=extra)
 	assigned_label = label.strip() if label and label.strip() else None
 	if assigned_label is not None:
@@ -479,56 +648,87 @@ def _file_labels_path(project_dir: Path) -> Path:
 	return project_dir / "metadata" / "file_labels.json"
 
 
-def load_file_labels(project_dir: Path) -> dict[str, str]:
+def load_file_labels(project_dir: Path) -> dict[str, list[str]]:
 	"""Load file labels from project metadata.
-	
+
 	Returns:
-		Dict mapping relative file paths to label strings.
+		Dict mapping filenames to lists of label strings.
 	"""
 	labels_path = _file_labels_path(project_dir)
 	if not labels_path.exists():
 		return {}
-	
+
 	try:
-		return json.loads(labels_path.read_text(encoding="utf-8"))
+		raw = json.loads(labels_path.read_text(encoding="utf-8"))
 	except (json.JSONDecodeError, IOError):
 		return {}
 
+	# Migrate old format (str values) and normalize to list[str]
+	# Also migrate old filename keys (with extensions) to stem keys.
+	migrated: dict[str, list[str]] = {}
+	for k, v in raw.items():
+		if isinstance(v, str):
+			cleaned = [v.strip()] if v.strip() else []
+		elif isinstance(v, list):
+			cleaned = [lbl.strip() for lbl in v if isinstance(lbl, str) and lbl.strip()]
+		else:
+			cleaned = []
+		if not cleaned:
+			continue
+		# Use stem as key; strip audio extension if present
+		stem = Path(k).stem if Path(k).suffix.lower() in SUPPORTED_AUDIO_SUFFIXES else k
+		existing = migrated.get(stem, [])
+		migrated[stem] = existing + [lbl for lbl in cleaned if lbl not in existing]
+	return migrated
 
-def save_file_labels(project_dir: Path, labels: dict[str, str]) -> None:
+
+def save_file_labels(project_dir: Path, labels: dict[str, list[str]]) -> None:
 	"""Save file labels to project metadata."""
 	labels_path = _file_labels_path(project_dir)
 	labels_path.parent.mkdir(parents=True, exist_ok=True)
 	labels_path.write_text(json.dumps(labels, indent=2), encoding="utf-8")
 
 
-def set_file_label(project_dir: Path, file_path: Path, label: str) -> None:
-	"""Set a label for a project file.
-	
+def set_file_labels(project_dir: Path, file_path: Path, labels: list[str]) -> None:
+	"""Set all labels for a project file (replaces existing labels).
+
 	Args:
 		project_dir: Path to the project directory.
-		file_path: Path to the audio file.
-		label: Label to assign (empty string to remove label).
+		file_path: Path to the audio file (raw or normalized).
+		labels: Labels to assign. Empty list removes all labels.
 	"""
+	norm_dir = project_normalized_dir(project_dir)
 	raw_dir = project_raw_dir(project_dir)
-	# Ensure we're working with a file in the project
-	if not file_path.resolve().parent == raw_dir.resolve():
-		raise ValueError(f"File must be in project raw directory: {raw_dir}")
-	
-	labels = load_file_labels(project_dir)
-	filename = file_path.name
-	
-	if label.strip():
-		labels[filename] = label.strip()
+	resolved_parent = file_path.resolve().parent
+	if resolved_parent not in (norm_dir.resolve(), raw_dir.resolve()):
+		raise ValueError(f"File must be in project raw or normalized directory: {file_path}")
+
+	all_labels = load_file_labels(project_dir)
+	stem = file_path.stem
+	clean = [lbl.strip() for lbl in labels if lbl.strip()]
+
+	if clean:
+		all_labels[stem] = clean
 	else:
-		labels.pop(filename, None)
-	
-	save_file_labels(project_dir, labels)
+		all_labels.pop(stem, None)
+
+	save_file_labels(project_dir, all_labels)
 	log_project_event(
 		project_dir,
 		"file_labeled",
-		{"filename": filename, "label": label.strip() if label.strip() else None},
+		{"stem": stem, "labels": clean},
 	)
+
+
+def set_file_label(project_dir: Path, file_path: Path, label: str) -> None:
+	"""Set a single label for a project file, replacing any existing labels.
+
+	Args:
+		project_dir: Path to the project directory.
+		file_path: Path to the audio file.
+		label: Label to assign (empty string to remove all labels).
+	"""
+	set_file_labels(project_dir, file_path, [label] if label.strip() else [])
 
 
 def set_project_file_labels(project_dir: Path, file_paths: list[Path], label: str) -> None:
@@ -537,35 +737,41 @@ def set_project_file_labels(project_dir: Path, file_paths: list[Path], label: st
 		set_file_label(project_dir, file_path, label)
 
 
-def get_file_label(project_dir: Path, file_path: Path) -> str | None:
-	"""Get the label for a project file, if any."""
+def get_file_labels(project_dir: Path, file_path: Path) -> list[str]:
+	"""Get all labels for a project file."""
 	labels = load_file_labels(project_dir)
-	return labels.get(file_path.name)
+	return labels.get(file_path.stem, [])
+
+
+def get_file_label(project_dir: Path, file_path: Path) -> str | None:
+	"""Get the first label for a project file, if any."""
+	file_labels = get_file_labels(project_dir, file_path)
+	return file_labels[0] if file_labels else None
 
 
 def list_project_files(project_dir: Path, label: str | None = None) -> list[Path]:
-	"""List audio files in project, optionally filtered by label.
-	
+	"""List normalized audio files in the project, optionally filtered by label.
+
 	Args:
 		project_dir: Path to the project directory.
 		label: Optional label to filter by.
-	
+
 	Returns:
-		Sorted list of audio file paths.
+		Sorted list of audio file paths from data/normalized/.
 	"""
-	raw_dir = project_raw_dir(project_dir)
-	if not raw_dir.exists():
+	norm_dir = project_normalized_dir(project_dir)
+	if not norm_dir.exists():
 		return []
 
 	files = sorted(
-		[path for path in raw_dir.iterdir() if path.is_file() and path.suffix.lower() in SUPPORTED_AUDIO_SUFFIXES],
+		[path for path in norm_dir.iterdir() if path.is_file() and path.suffix.lower() in SUPPORTED_AUDIO_SUFFIXES],
 		key=lambda path: path.name.lower(),
 	)
-	
+
 	if label is not None:
 		labels = load_file_labels(project_dir)
-		files = [f for f in files if labels.get(f.name) == label]
-	
+		files = [f for f in files if label in labels.get(f.stem, [])]
+
 	return files
 
 
@@ -590,7 +796,11 @@ def load_babble_talker_groups(project_dir: Path) -> list[BabbleTalkerGroup]:
 	groups: dict[tuple[BabbleSex, int], list[Path]] = {}
 
 	for file_path in list_project_files(project_dir):
-		parsed = _parse_babble_talker_label(labels.get(file_path.name))
+		parsed = None
+		for lbl in labels.get(file_path.stem, []):
+			parsed = _parse_babble_talker_label(lbl)
+			if parsed is not None:
+				break
 		if parsed is None:
 			continue
 		groups.setdefault(parsed, []).append(file_path)
@@ -702,6 +912,8 @@ def _serialize_project_config(
 	project_root: Path,
 	sample_rate: int,
 	channel_mode: str,
+	bit_depth: int = 16,
+	file_format: str = "wav",
 	spectrogram_settings: dict[str, object],
 	pipelines: list[Pipeline],
 ) -> str:
@@ -718,6 +930,8 @@ def _serialize_project_config(
 		"[audio]",
 		f"sample_rate = {sample_rate}",
 		f"channels = {_toml_string(channel_mode)}",
+		f"bit_depth = {bit_depth}",
+		f"format = {_toml_string(file_format)}",
 		"",
 		"[storage]",
 		'raw = "data/raw"',
