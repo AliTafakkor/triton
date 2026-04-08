@@ -30,6 +30,7 @@ from triton.core.project import (
 	Project,
 	add_project_file,
 	create_project,
+	delete_project_files_by_label,
 	delete_project_file,
 	log_project_event,
 	list_project_files,
@@ -46,6 +47,7 @@ from triton.core.project import (
 	update_project_spectrogram_settings,
 	load_babble_talker_groups,
 	load_file_labels,
+	normalize_project_file,
 	set_file_label,
 	set_project_file_labels,
 )
@@ -191,15 +193,26 @@ def _generate_file_spectrogram(audio_path: Path, project: Project) -> Path:
 	return out_path
 
 
-def _save_uploaded_project_files(project: Project, uploaded_files: list[object], batch_label: str = "") -> list[Path]:
+def _save_uploaded_project_files(
+	project: Project,
+	uploaded_files: list[object],
+	batch_label: str = "",
+	filename_prefix: str = "",
+) -> list[Path]:
 	saved_paths: list[Path] = []
 	with st.status("Importing files...", expanded=True) as status:
 		progress_bar = st.progress(0.0)
 		for idx, uploaded_file in enumerate(uploaded_files):
 			status.write(f"Importing: {uploaded_file.name}")
-			path = add_project_file(project.path, uploaded_file.name, uploaded_file.getvalue())
-			saved_paths.append(path)
-			_generate_file_spectrogram(path, project)
+			raw_path = add_project_file(
+				project.path,
+				uploaded_file.name,
+				uploaded_file.getvalue(),
+				filename_prefix=filename_prefix,
+			)
+			norm_path = normalize_project_file(project.path, raw_path, project)
+			saved_paths.append(norm_path)
+			_generate_file_spectrogram(norm_path, project)
 			progress = (idx + 1) / len(uploaded_files)
 			status.update(label=f"Importing files... ({idx + 1}/{len(uploaded_files)})", state="running")
 			progress_bar.progress(progress)
@@ -239,6 +252,10 @@ def _regenerate_all_project_spectrograms(project: Project, project_files: list[P
 
 def _delete_project_file(file_path: Path) -> None:
 	delete_project_file(file_path)
+
+
+def _delete_project_files_by_label(project_dir: Path, label: str) -> list[Path]:
+	return delete_project_files_by_label(project_dir, label)
 
 
 def _rename_project_file(file_path: Path, new_name: str) -> Path:

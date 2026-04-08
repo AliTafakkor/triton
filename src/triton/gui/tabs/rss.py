@@ -8,7 +8,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from triton.core.project import Project, log_project_event, project_raw_dir
+from triton.core.project import Project, log_project_event, normalize_project_file, project_raw_dir
 from triton.ingest.rss import RssSource
 from triton.gui.shared import _generate_file_spectrogram
 
@@ -44,7 +44,7 @@ def _render_rss_ingest_tab(project: Project) -> None:
 	)
 
 	raw_dir = project_raw_dir(project.path)
-	st.caption(f"Downloads will be saved to {raw_dir}")
+	st.caption(f"Downloads will be saved to {raw_dir} then normalized to the project spec")
 
 	with st.form("rss_ingest_form"):
 		default_end = datetime.now().date()
@@ -155,25 +155,26 @@ def _render_rss_ingest_tab(project: Project) -> None:
 	spec_errors: list[str] = []
 
 	if downloaded_paths:
-		with st.status("Generating spectrograms...", expanded=True) as spec_status:
+		with st.status("Normalizing and generating spectrograms...", expanded=True) as spec_status:
 			spec_progress_bar = st.progress(0.0)
 			for idx, path_str in enumerate(downloaded_paths):
-				file_path = Path(path_str)
-				spec_status.write(f"Processing: {file_path.name}")
+				raw_file = Path(path_str)
+				spec_status.write(f"Processing: {raw_file.name}")
 				try:
-					_generate_file_spectrogram(file_path, project)
+					norm_file = normalize_project_file(project.path, raw_file, project)
+					_generate_file_spectrogram(norm_file, project)
 				except Exception as exc:
-					spec_errors.append(f"{file_path.name}: {exc}")
+					spec_errors.append(f"{raw_file.name}: {exc}")
 				else:
 					generated_specs += 1
 				spec_progress_val = (idx + 1) / len(downloaded_paths)
-				spec_status.update(label=f"Generating spectrograms... ({idx + 1}/{len(downloaded_paths)})", state="running")
+				spec_status.update(label=f"Processing... ({idx + 1}/{len(downloaded_paths)})", state="running")
 				spec_progress_bar.progress(spec_progress_val)
-			spec_status.update(label=f"Generated {generated_specs} spectrogram(s)", state="complete")
+			spec_status.update(label=f"Normalized and generated {generated_specs} spectrogram(s)", state="complete")
 
 	log_project_event(project.path, "rss_ingest_completed", {"feed_url": clean_feed_url, "requested_entries": len(selected_entries), "downloaded_files": len(downloaded_paths), "spectrograms_generated": generated_specs, "spectrogram_failures": len(spec_errors)})
 
-	st.success(f"Downloaded {len(downloaded_paths)} file(s) into project raw storage.")
+	st.success(f"Downloaded and normalized {len(downloaded_paths)} file(s).")
 	if spec_errors:
 		st.warning(f"Generated {generated_specs} spectrogram(s), {len(spec_errors)} failed.")
 		for error in spec_errors:

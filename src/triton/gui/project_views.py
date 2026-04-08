@@ -61,8 +61,15 @@ def _render_project_launcher(
         with st.form("create_project_form"):
             project_name = st.text_input("Project name", value="my-project")
             project_root = st.text_input("Project folder", value=str(Path.home() / "Projects" / "triton" / "my-project"))
-            sample_rate = st.selectbox("Sample rate", options=[8000, 16000, 22050, 24000, 32000, 44100, 48000], index=1, key="create_sr")
-            channel_mode = st.radio("Channel mode", options=["mono", "stereo"], horizontal=True, key="create_channels")
+            spec_col1, spec_col2, spec_col3, spec_col4 = st.columns(4)
+            with spec_col1:
+                sample_rate = st.selectbox("Sample rate (Hz)", options=[8000, 16000, 22050, 24000, 32000, 44100, 48000], index=1, key="create_sr")
+            with spec_col2:
+                channel_mode = st.selectbox("Channels", options=["mono", "stereo"], key="create_channels")
+            with spec_col3:
+                bit_depth = st.selectbox("Bit depth", options=[8, 16, 24, 32], index=1, key="create_bit_depth")
+            with spec_col4:
+                file_format = st.selectbox("File format", options=["wav", "flac", "ogg"], index=0, key="create_file_format")
             with st.expander("Spectrogram defaults", expanded=False):
                 spectrogram_settings = collect_spectrogram_settings("create")
             create_submitted = st.form_submit_button("Create project", type="primary")
@@ -77,6 +84,8 @@ def _render_project_launcher(
                     project_dir,
                     sample_rate=sample_rate,
                     channel_mode=channel_mode,
+                    bit_depth=bit_depth,
+                    file_format=file_format,
                     spectrogram_settings=spectrogram_settings,
                 )
                 st.session_state["active_project"] = project

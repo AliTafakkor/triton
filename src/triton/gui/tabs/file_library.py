@@ -8,9 +8,10 @@ import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
-from triton.core.project import Project, load_file_labels, project_raw_dir, set_file_label
+from triton.core.project import Project, load_file_labels, project_normalized_dir, set_file_labels
 from triton.core.spectrogram import load_spectrogram
 from triton.gui.shared import (
+	_delete_project_files_by_label,
 	_delete_project_file,
 	_format_file_size,
 	_generate_file_spectrogram,
@@ -20,9 +21,16 @@ from triton.gui.shared import (
 )
 
 
+def _on_label_change(label_key: str, project_path: Path, file_path: Path) -> None:
+	"""on_change callback for label text inputs — saves immediately when user commits."""
+	new_label_str = st.session_state.get(label_key, "")
+	new_labels = [lbl.strip() for lbl in new_label_str.split(",") if lbl.strip()]
+	set_file_labels(project_path, file_path, new_labels)
+
+
 def _render_file_library(project: Project, project_files: list[Path]) -> None:
 	st.markdown("### Import Files")
-	st.caption(f"Imported source files are stored in {project_raw_dir(project.path)}")
+	st.caption(f"Normalized files are stored in {project_normalized_dir(project.path)}")
 
 	add_col, count_col = st.columns([2, 3])
 	with add_col:
@@ -32,6 +40,13 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 				type=["wav", "flac", "ogg", "mp3", "m4a"],
 				accept_multiple_files=True,
 				key="project_file_upload",
+			)
+			filename_prefix = st.text_input(
+				"Filename prefix (optional)",
+				value="",
+				placeholder="e.g., feed1_",
+				key="project_file_upload_prefix",
+				help="Prepended to every imported filename to avoid name collisions.",
 			)
 			batch_label = st.text_input(
 				"Apply one label to all imported files",
@@ -45,10 +60,15 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 			if not uploaded_files:
 				st.error("Choose at least one file to import.")
 			else:
-				saved_paths = _save_uploaded_project_files(project, list(uploaded_files), batch_label=batch_label)
+				saved_paths = _save_uploaded_project_files(
+					project,
+					list(uploaded_files),
+					batch_label=batch_label,
+					filename_prefix=filename_prefix,
+				)
 				st.success(f"Imported {len(saved_paths)} file(s) and precomputed spectrograms.")
-				st.session_state["project_file_upload"] = None
-				st.session_state["project_file_upload_label"] = ""
+				st.session_state.pop("project_file_upload_label", None)
+				st.session_state.pop("project_file_upload_prefix", None)
 				st.session_state.pop("selected_spectrogram_file", None)
 				st.session_state.pop("file_list_page", None)
 				st.session_state.pop("project_file_upload_form", None)
@@ -86,11 +106,11 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 
 		with filter_row_col2:
 			all_labels = load_file_labels(project.path)
-			available_labels = sorted(set(all_labels.values()))
+			available_labels = sorted(set(lbl for lbls in all_labels.values() for lbl in lbls))
 			label_filter = st.selectbox(
 				"Filter by label",
-				options=["(All)"] + available_labels,
-				format_func=lambda x: x if x == "(All)" else f"Label: {x}"
+				options=["(All)", "(None)"] + available_labels,
+				format_func=lambda x: x if x in ("(All)", "(None)") else f"Label: {x}"
 			)
 
 		with filter_row_col3:
@@ -100,10 +120,40 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 				"size_asc": "Size (smallest first)",
 			}[value])
 
+		if available_labels:
+			st.markdown("##### Bulk Actions")
+			delete_col1, delete_col2, delete_col3 = st.columns([2.4, 0.9, 1.2])
+			with delete_col1:
+				label_to_delete = st.selectbox(
+					"Delete all files with label",
+					options=["(Select label)"] + available_labels,
+					key="bulk_delete_label_select",
+				)
+			with delete_col2:
+				confirm_delete = st.checkbox(
+					"Confirm",
+					key="bulk_delete_label_confirm",
+					help="Required to prevent accidental bulk deletion.",
+				)
+			with delete_col3:
+				delete_disabled = label_to_delete == "(Select label)" or not confirm_delete
+				if st.button("Delete Label Files", type="secondary", use_container_width=True, disabled=delete_disabled):
+					deleted_files = _delete_project_files_by_label(project.path, label_to_delete)
+					deleted_set = {str(path) for path in deleted_files}
+					for deleted in deleted_files:
+						st.session_state.pop(f"import_checked_{_pipeline_key(str(deleted))}", None)
+					if st.session_state.get("selected_spectrogram_file") in deleted_set:
+						st.session_state.pop("selected_spectrogram_file", None)
+					st.session_state.pop("bulk_delete_label_confirm", None)
+					st.success(f"Deleted {len(deleted_files)} file(s) with label '{label_to_delete}'.")
+					st.rerun()
+
 		visible_files = [path for path in project_files if search_text.strip().lower() in path.name.lower()]
 
-		if label_filter != "(All)":
-			visible_files = [f for f in visible_files if all_labels.get(f.name) == label_filter]
+		if label_filter == "(None)":
+			visible_files = [f for f in visible_files if not all_labels.get(f.stem)]
+		elif label_filter != "(All)":
+			visible_files = [f for f in visible_files if label_filter in all_labels.get(f.stem, [])]
 
 		if sort_mode == "size_desc":
 			visible_files = sorted(visible_files, key=lambda path: path.stat().st_size, reverse=True)
@@ -144,7 +194,7 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 				global_index = start_idx + index
 				spec_path = _spectrogram_path(file_path)
 				check_key = f"import_checked_{_pipeline_key(str(file_path))}"
-				file_label = all_labels.get(file_path.name, "")
+				file_label_str = ", ".join(all_labels.get(file_path.stem, []))
 
 				row_cols = st.columns([0.4, 2.0, 1.5, 1.0, 1.2, 0.7, 0.7, 0.7])
 
@@ -162,16 +212,16 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 
 				with row_cols[4]:
 					label_key = f"label_input_{_pipeline_key(str(file_path))}"
-					new_label = st.text_input(
+					# Sync session state to disk value so external changes (rename, batch) are reflected
+					st.session_state[label_key] = file_label_str
+					st.text_input(
 						"Set label",
-						value=file_label,
 						key=label_key,
 						label_visibility="collapsed",
-						placeholder="e.g., talker1"
+						placeholder="e.g., talker1, bab-f1",
+						on_change=_on_label_change,
+						args=(label_key, project.path, file_path),
 					)
-					if new_label != file_label:
-						set_file_label(project.path, file_path, new_label)
-						st.rerun()
 
 				with row_cols[5]:
 					if st.button("📊", key=f"spec_{global_index}", help="View spectrogram", use_container_width=True):

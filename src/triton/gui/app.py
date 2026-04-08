@@ -54,7 +54,7 @@ from triton.core.project import (
 	update_project_spectrogram_settings,
 	load_babble_talker_groups,
 	load_file_labels,
-	set_file_label,
+	set_file_labels,
 	set_project_file_labels,
 )
 from triton.core.io import load_audio, write_sidecar
@@ -801,53 +801,93 @@ def _render_project_workspace(project: Project) -> None:
 		)
 
 		# Label rename section
-		with st.expander("📋 Rename Labels", expanded=False):
+		with st.expander("📋 Manage Labels", expanded=False):
 			st.write("Rename a label to apply the new name to all files that currently have that label.")
-			
+
 			all_labels_dict = load_file_labels(project.path)
-			existing_labels = sorted(set(label for label in all_labels_dict.values() if label))
-			
+			label_counts: dict[str, int] = {}
+			for file_labels in all_labels_dict.values():
+				for lbl in file_labels:
+					label_counts[lbl] = label_counts.get(lbl, 0) + 1
+			existing_labels = sorted(label_counts)
+
 			if not existing_labels:
 				st.info("No labels found. Label files using the table below or batch import labels.")
 			else:
 				col1, col2, col3 = st.columns([1.5, 1.5, 1])
-				
+
 				with col1:
 					old_label = st.selectbox(
 						"Select label to rename",
 						options=existing_labels,
+						format_func=lambda x: f"{x}  ({label_counts[x]} file(s))",
 						key="rename_old_label"
 					)
-				
+
 				with col2:
 					new_label = st.text_input(
 						"New label name",
 						placeholder="e.g., bab-m1",
 						key="rename_new_label"
 					)
-				
+
 				with col3:
 					if st.button("Rename", key="apply_rename_label", use_container_width=True, type="primary"):
 						if new_label.strip() and new_label.strip() != old_label:
-							files_with_label = [
-								(file_path, label) for file_path, label in [(Path(f), all_labels_dict.get(f.name, "")) for f in project_files]
-								if label == old_label
+							files_to_update = [
+								file_path for file_path in project_files
+								if old_label in all_labels_dict.get(file_path.stem, [])
 							]
-							
-							for file_path, _ in files_with_label:
-								set_file_label(project.path, file_path, new_label.strip())
-							
+
+							for file_path in files_to_update:
+								current = all_labels_dict.get(file_path.stem, [])
+								updated = [new_label.strip() if lbl == old_label else lbl for lbl in current]
+								set_file_labels(project.path, file_path, updated)
+
 							log_project_event(
 								project.path,
 								"label_renamed",
-								{"old_label": old_label, "new_label": new_label.strip(), "affected_files": len(files_with_label)},
+								{"old_label": old_label, "new_label": new_label.strip(), "affected_files": len(files_to_update)},
 							)
-							st.success(f"Renamed label '{old_label}' to '{new_label.strip()}' for {len(files_with_label)} file(s)")
+							st.success(f"Renamed label '{old_label}' to '{new_label.strip()}' for {len(files_to_update)} file(s)")
 							st.rerun()
 						elif new_label.strip() == old_label:
 							st.warning("New label is the same as the old label")
 						else:
 							st.error("Enter a new label name")
+
+				st.divider()
+				st.write("Apply a label to all files that currently have no labels.")
+				unlabeled_files = [f for f in project_files if not all_labels_dict.get(f.stem)]
+				if not unlabeled_files:
+					st.info("All files already have at least one label.")
+				else:
+					bulk_col1, bulk_col2 = st.columns([2, 1])
+					with bulk_col1:
+						bulk_label = st.text_input(
+							"Label for unlabeled files",
+							placeholder="e.g., untagged",
+							key="bulk_unlabeled_label_input",
+						)
+					with bulk_col2:
+						if st.button(
+							f"Apply to {len(unlabeled_files)} file(s)",
+							key="apply_bulk_unlabeled_label",
+							type="primary",
+							use_container_width=True,
+						):
+							if bulk_label.strip():
+								for file_path in unlabeled_files:
+									set_file_labels(project.path, file_path, [bulk_label.strip()])
+								log_project_event(
+									project.path,
+									"files_labeled_batch",
+									{"count": len(unlabeled_files), "label": bulk_label.strip(), "files": [f.name for f in unlabeled_files]},
+								)
+								st.success(f"Applied label '{bulk_label.strip()}' to {len(unlabeled_files)} file(s)")
+								st.rerun()
+							else:
+								st.error("Enter a label name")
 
 		_render_file_library(project, project_files)
 
