@@ -7,12 +7,13 @@ from pathlib import Path
 import typer
 
 from triton.core.project import (
+	delete_project_files_by_label,
 	load_project_config,
 	list_project_files,
 	set_file_label,
 	get_file_label,
 	load_file_labels,
-	project_raw_dir,
+	project_normalized_dir,
 )
 
 
@@ -38,9 +39,9 @@ def label_file(
 	except FileNotFoundError as exc:
 		raise typer.BadParameter(f"Project not found: {project_dir}") from exc
 
-	# Verify file exists in project
-	raw_dir = project_raw_dir(project_dir)
-	file_path = raw_dir / filename
+	# Verify file exists in project (normalized dir is the canonical location)
+	norm_dir = project_normalized_dir(project_dir)
+	file_path = norm_dir / filename
 
 	if not file_path.exists():
 		raise typer.BadParameter(f"File not found in project: {filename}")
@@ -91,8 +92,8 @@ def list_files(
 		typer.echo("Project files:\n")
 
 	for file_path in files:
-		file_label = all_labels.get(file_path.name)
-		label_str = f" [{file_label}]" if file_label else ""
+		file_labels = all_labels.get(file_path.stem, [])
+		label_str = f" [{', '.join(file_labels)}]" if file_labels else ""
 		typer.echo(f"  {file_path.name}{label_str}")
 
 	typer.echo(f"\nTotal: {len(files)} file(s)")
@@ -120,7 +121,48 @@ def show_labels(
 		return
 
 	typer.echo("File labels:\n")
-	for filename, label in sorted(all_labels.items()):
-		typer.echo(f"  {filename}: {label}")
+	for filename, file_labels in sorted(all_labels.items()):
+		typer.echo(f"  {filename}: {', '.join(file_labels)}")
 
 	typer.echo(f"\nTotal labeled files: {len(all_labels)}")
+
+
+@files_app.command("delete-label")
+def delete_files_by_label(
+	project_dir: Path = typer.Argument(..., help="Path to project directory"),
+	label: str = typer.Argument(..., help="Label to match for deletion"),
+	yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+):
+	"""Delete all project files that carry the given label.
+
+	This removes matching normalized files and their raw counterparts.
+	"""
+	project_dir = project_dir.expanduser().resolve()
+
+	try:
+		project = load_project_config(project_dir)
+	except FileNotFoundError as exc:
+		raise typer.BadParameter(f"Project not found: {project_dir}") from exc
+
+	clean_label = label.strip()
+	if not clean_label:
+		raise typer.BadParameter("Label cannot be empty")
+
+	files = list_project_files(project_dir, label=clean_label)
+	if not files:
+		typer.echo(f"No files found with label '{clean_label}'")
+		return
+
+	if not yes:
+		confirmed = typer.confirm(
+			f"Delete {len(files)} file(s) with label '{clean_label}'?",
+			default=False,
+		)
+		if not confirmed:
+			typer.echo("Cancelled")
+			return
+
+	deleted = delete_project_files_by_label(project_dir, clean_label)
+	typer.echo(f"Deleted {len(deleted)} file(s) with label '{clean_label}'")
+	for file_path in deleted:
+		typer.echo(f"  {file_path.name}")

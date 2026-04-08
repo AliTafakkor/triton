@@ -53,9 +53,9 @@ def _resolve_file(project: Project, file_value: str) -> Path:
 	if candidate.is_absolute():
 		path = candidate
 	else:
-		raw_path = project.raw_dir / candidate
-		if raw_path.exists():
-			path = raw_path
+		norm_path = project.normalized_dir / candidate
+		if norm_path.exists():
+			path = norm_path
 		else:
 			path = project.path / candidate
 	if not path.exists() or not path.is_file():
