@@ -14,6 +14,7 @@ from triton.core.io import (
     SUPPORTED_EXTS,
 )
 from triton.core.conversion import to_mono, to_stereo, resample, requantize
+from triton.core.ramp import apply_ramp, RAMP_SHAPES
 from triton.core.spectrogram import (
     SpectrogramResult,
     compute_spectrogram,
@@ -93,6 +94,8 @@ __all__ = [
     "to_stereo",
     "resample",
     "requantize",
+    "apply_ramp",
+    "RAMP_SHAPES",
     "SpectrogramResult",
     "compute_spectrogram",
     "load_spectrogram",

@@ -12,6 +12,7 @@ import numpy as np
 from triton.core.conversion import requantize
 from triton.core.io import load_audio, normalize_peak, normalize_rms, save_audio
 from triton.core.project import Pipeline, Project
+from triton.core.ramp import apply_ramp
 from triton.degrade.time_compression import compress_time
 from triton.degrade.vocoder import noise_vocode
 
@@ -25,6 +26,7 @@ PIPELINE_ACTIONS: dict[str, str] = {
 	"requantize_16": "Requantize to 16-bit",
 	"vocode_noise": "Noise vocoder degradation",
 	"time_compress": "Time compression (Praat/Parselmouth)",
+	"ramp": "Fade in / Fade out (ramp)",
 }
 
 PIPELINE_STEP_ORDER = list(PIPELINE_ACTIONS.keys())
@@ -48,6 +50,8 @@ def default_step_options(step: str, project_sr: int) -> dict[str, object]:
 		return {"n_bands": 8, "vocoder_type": "noise", "envelope_cutoff": 160.0}
 	if step == "time_compress":
 		return {"factor": 1.0}
+	if step == "ramp":
+		return {"ramp_start": 0.05, "ramp_end": 0.05, "shape": "cosine"}
 	return {}
 
 
@@ -175,6 +179,12 @@ def apply_pipeline_step(
 			raise ValueError("Compression factor must be positive.")
 		mono = audio if audio.ndim == 1 else np.mean(audio, axis=1, dtype=np.float32)
 		return compress_time(mono, sr, factor=factor), sr
+
+	if step == "ramp":
+		ramp_start = float(options.get("ramp_start", 0.05))
+		ramp_end = float(options.get("ramp_end", 0.05))
+		shape = str(options.get("shape", "cosine"))
+		return apply_ramp(audio, sr, ramp_start=ramp_start, ramp_end=ramp_end, shape=shape), sr
 
 	raise ValueError(f"Unsupported pipeline step: {step}")
 
