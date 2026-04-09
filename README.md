@@ -17,6 +17,8 @@ Triton is a modular audio utility designed to standardize stimuli preparation an
 
 **Pipeline Matrix**: Define a pipeline once, then sweep across multiple files and parameter combinations in a single reproducible batch. Generate a CSV of file × parameter combinations and run them all at once, with isolated outputs per row for easy comparison and aggregation.
 
+**Audio ramping**: Apply fade-in and/or fade-out envelopes with four selectable shapes — `linear`, `exponential`, `logarithmic`, and `cosine` (smooth S-curve, default). Available as a pipeline step in the GUI, a CLI subcommand (`triton degrade ramp`), and a Python API (`triton.core.apply_ramp`).
+
 **Spectrogram viewer**: Import-time spectrogram generation (STFT / Mel / CQT) with per-project defaults stored in `triton.toml`. The GUI renders interactive Plotly spectrograms with zoom/pan/scroll in the file browser.
 
 ## Project Structure
