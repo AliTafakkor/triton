@@ -6,6 +6,7 @@ from pathlib import Path
 
 import typer
 
+from triton.core.ramp import RAMP_SHAPES, apply_ramp
 from triton.degrade.vocoder import noise_vocode
 from triton.degrade.speech_noise import (
 	speech_shaped_noise,
@@ -15,6 +16,37 @@ from triton.core.io import iter_audio_files, load_audio, save_audio
 
 
 degrade_app = typer.Typer(add_completion=False, help="Apply audio degradations")
+
+
+@degrade_app.command("ramp")
+def ramp(
+	input_path: Path = typer.Argument(..., help="Audio file or directory"),
+	output_dir: Path = typer.Option(Path("outputs/ramped"), help="Output directory"),
+	ramp_start: float = typer.Option(0.05, "--ramp-start", help="Fade-in duration in seconds"),
+	ramp_end: float = typer.Option(0.05, "--ramp-end", help="Fade-out duration in seconds"),
+	shape: str = typer.Option("cosine", "--shape", help=f"Ramp shape: {', '.join(RAMP_SHAPES)}"),
+):
+	"""Apply a fade-in and/or fade-out ramp envelope to audio files."""
+	input_path = input_path.expanduser().resolve()
+	output_dir = output_dir.expanduser().resolve()
+	output_dir.mkdir(parents=True, exist_ok=True)
+
+	if shape not in RAMP_SHAPES:
+		raise typer.BadParameter(f"Unknown shape '{shape}'. Choose from: {', '.join(RAMP_SHAPES)}.")
+
+	try:
+		files = list(iter_audio_files(input_path))
+	except ValueError as exc:
+		raise typer.BadParameter(str(exc)) from exc
+
+	for audio_path in files:
+		audio, sr = load_audio(audio_path, sr=None, mono=False)
+		ramped = apply_ramp(audio, sr, ramp_start=ramp_start, ramp_end=ramp_end, shape=shape)
+
+		rel_name = audio_path.name if input_path.is_file() else audio_path.relative_to(input_path)
+		out_path = output_dir / rel_name
+		save_audio(out_path, ramped, sr)
+		typer.echo(f"Wrote {out_path}")
 
 
 @degrade_app.command("vocode")
