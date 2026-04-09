@@ -245,8 +245,6 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 				with row_cols[7]:
 					if st.button("🗑️", key=f"delete_{global_index}", help="Delete file", use_container_width=True):
 						_delete_project_file(file_path)
-						if spec_path.exists():
-							spec_path.unlink()
 						if st.session_state.get("selected_spectrogram_file") == str(file_path):
 							st.session_state.pop("selected_spectrogram_file", None)
 						st.session_state.pop(check_key, None)

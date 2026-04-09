@@ -497,18 +497,59 @@ def add_project_file(
 	return target_path
 
 
+def _delete_audio_with_companions(file_path: Path) -> None:
+	"""Delete an audio file and its sidecar / spectrogram companion files.
+
+	Removes ``<file>.json`` (provenance sidecar) and
+	``<file>.spectrogram.npz`` (precomputed spectrogram) when they exist
+	alongside *file_path*.  Does nothing if *file_path* does not exist.
+	"""
+	if not file_path.exists():
+		return
+	file_path.unlink()
+	sidecar = file_path.with_suffix(file_path.suffix + ".json")
+	if sidecar.exists():
+		sidecar.unlink()
+	spectrogram = file_path.with_suffix(file_path.suffix + ".spectrogram.npz")
+	if spectrogram.exists():
+		spectrogram.unlink()
+
+
 def delete_project_file(file_path: Path) -> None:
+	"""Delete a project audio file and all associated artefacts.
+
+	Removes the audio file itself together with:
+
+	* its provenance sidecar (``<file>.json``),
+	* its precomputed spectrogram (``<file>.spectrogram.npz``),
+	* the matching raw source file in ``data/raw/`` (any supported extension)
+	  and its companions,
+	* the matching normalized file in ``data/normalized/`` (any supported
+	  extension) and its companions — only when *file_path* is not itself
+	  inside the normalized directory (to avoid a redundant second pass).
+
+	Does nothing if *file_path* does not exist.
+	"""
 	if not (file_path.exists() and file_path.is_file()):
 		return
 	project_dir = file_path.parents[2] if len(file_path.parents) >= 3 else file_path.parent
 	file_name = file_path.name
-	file_path.unlink()
 
-	# Also delete the corresponding raw file (any extension with the same stem)
+	_delete_audio_with_companions(file_path)
+
+	# Delete corresponding raw file(s) with the same stem
 	raw_dir = project_raw_dir(project_dir)
 	for raw_candidate in raw_dir.glob(f"{file_path.stem}.*"):
 		if raw_candidate.is_file() and raw_candidate.suffix.lower() in SUPPORTED_AUDIO_SUFFIXES:
-			raw_candidate.unlink()
+			_delete_audio_with_companions(raw_candidate)
+
+	# Delete corresponding normalized file(s) with the same stem, unless the
+	# file being deleted is already the normalized copy.
+	norm_dir = project_normalized_dir(project_dir)
+	if file_path.parent.resolve() != norm_dir.resolve():
+		for norm_candidate in norm_dir.glob(f"{file_path.stem}.*"):
+			if norm_candidate.is_file() and norm_candidate.suffix.lower() in SUPPORTED_AUDIO_SUFFIXES:
+				_delete_audio_with_companions(norm_candidate)
 
 	log_project_event(project_dir, "file_deleted", {"name": file_name, "path": str(file_path.resolve())})
 
