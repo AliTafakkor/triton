@@ -8,6 +8,7 @@ import streamlit as st
 
 from triton.core.project import Pipeline, Project, log_project_event
 from triton.core.pipeline_runtime import PIPELINE_ACTIONS, PIPELINE_DEFAULT_STEP, PIPELINE_STEP_ORDER
+from triton.core.ramp import RAMP_SHAPES
 from triton.gui.shared import (
 	_apply_pipeline_step,
 	_default_step_options,
@@ -41,6 +42,9 @@ def _delete_pipeline_step(step_index: int) -> None:
 		"pipeline_step_vocoder_type_",
 		"pipeline_step_envelope_cutoff_",
 		"pipeline_step_compress_factor_",
+		"pipeline_step_ramp_start_",
+		"pipeline_step_ramp_end_",
+		"pipeline_step_ramp_shape_",
 	]
 
 	for index in range(step_index, step_count - 1):
@@ -89,6 +93,9 @@ def _open_pipeline_editor(mode: str, project: Project, pipeline: Pipeline | None
 		st.session_state[f"pipeline_step_vocoder_type_{index}"] = str(options.get("vocoder_type", "noise"))
 		st.session_state[f"pipeline_step_envelope_cutoff_{index}"] = float(options.get("envelope_cutoff", 160.0))
 		st.session_state[f"pipeline_step_compress_factor_{index}"] = float(options.get("factor", 1.0))
+		st.session_state[f"pipeline_step_ramp_start_{index}"] = float(options.get("ramp_start", 0.05))
+		st.session_state[f"pipeline_step_ramp_end_{index}"] = float(options.get("ramp_end", 0.05))
+		st.session_state[f"pipeline_step_ramp_shape_{index}"] = str(options.get("shape", "cosine"))
 
 
 def _close_pipeline_editor() -> None:
@@ -111,6 +118,9 @@ def _delete_pipeline_step(step_index: int) -> None:
 		"pipeline_step_vocoder_type_",
 		"pipeline_step_envelope_cutoff_",
 		"pipeline_step_compress_factor_",
+		"pipeline_step_ramp_start_",
+		"pipeline_step_ramp_end_",
+		"pipeline_step_ramp_shape_",
 	]
 
 	for index in range(step_index, step_count - 1):
@@ -164,6 +174,12 @@ def _render_step_options_editor(step: str, index: int, project: Project) -> dict
 	if step == "time_compress":
 		factor = st.slider("Compression factor", min_value=0.1, max_value=10.0, value=float(st.session_state.get(f"pipeline_step_compress_factor_{index}", 1.0)), step=0.1, key=f"pipeline_step_compress_factor_{index}", help="< 1.0 = faster (compression), > 1.0 = slower (expansion)")
 		return {"factor": float(factor)}
+
+	if step == "ramp":
+		shape = st.selectbox("Ramp shape", options=list(RAMP_SHAPES), key=f"pipeline_step_ramp_shape_{index}", help="linear: uniform sweep · cosine: smooth S-curve · exponential: slow start fast finish · logarithmic: fast start slow finish")
+		ramp_start = st.slider("Fade-in duration (s)", min_value=0.0, max_value=5.0, value=float(st.session_state.get(f"pipeline_step_ramp_start_{index}", 0.05)), step=0.01, key=f"pipeline_step_ramp_start_{index}")
+		ramp_end = st.slider("Fade-out duration (s)", min_value=0.0, max_value=5.0, value=float(st.session_state.get(f"pipeline_step_ramp_end_{index}", 0.05)), step=0.01, key=f"pipeline_step_ramp_end_{index}")
+		return {"ramp_start": float(ramp_start), "ramp_end": float(ramp_end), "shape": str(shape)}
 
 	st.caption("No options for this step.")
 	return {}
