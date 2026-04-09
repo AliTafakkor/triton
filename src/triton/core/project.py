@@ -162,6 +162,10 @@ def project_normalized_dir(project_dir: Path) -> Path:
 	return project_dir / "data" / "normalized"
 
 
+def project_derived_dir(project_dir: Path) -> Path:
+	return project_dir / "data" / "derived"
+
+
 def project_log_path(project_dir: Path) -> Path:
 	return project_dir / "metadata" / "project.log.jsonl"
 
@@ -613,6 +617,24 @@ def _unique_project_normalized_path(project_dir: Path, filename: str) -> Path:
 		counter += 1
 
 
+def _unique_project_derived_path(project_dir: Path, filename: str) -> Path:
+	"""Return a unique path directly under the project derived directory for a generated artifact."""
+	derived_dir = project_derived_dir(project_dir)
+	derived_dir.mkdir(parents=True, exist_ok=True)
+	target = derived_dir / sanitize_filename(filename)
+	if not target.exists():
+		return target
+
+	stem = target.stem
+	suffix = target.suffix
+	counter = 1
+	while True:
+		candidate = derived_dir / f"{stem}_{counter}{suffix}"
+		if not candidate.exists():
+			return candidate
+		counter += 1
+
+
 def save_project_generated_audio(
 	project_dir: Path,
 	filename: str,
@@ -624,8 +646,8 @@ def save_project_generated_audio(
 	actions: list[dict[str, object]] | None = None,
 	extra: dict[str, object] | None = None,
 ) -> Path:
-	"""Save a generated audio artifact into normalized project storage and label it if requested."""
-	target_path = _unique_project_normalized_path(project_dir, filename)
+	"""Save a generated audio artifact into the project derived directory and label it if requested."""
+	target_path = _unique_project_derived_path(project_dir, filename)
 	save_audio(target_path, audio, sr, source=source, actions=actions, extra=extra)
 	assigned_label = label.strip() if label and label.strip() else None
 	if assigned_label is not None:
@@ -750,23 +772,37 @@ def get_file_label(project_dir: Path, file_path: Path) -> str | None:
 
 
 def list_project_files(project_dir: Path, label: str | None = None) -> list[Path]:
-	"""List normalized audio files in the project, optionally filtered by label.
+	"""List audio files in the project, optionally filtered by label.
+
+	Includes files from both ``data/normalized/`` (imported files converted to
+	the project spec) and the top level of ``data/derived/`` (generated
+	artifacts such as babble mixes added back to the project).  Pipeline step
+	outputs nested inside ``data/derived/pipelines/`` are not included.
 
 	Args:
 		project_dir: Path to the project directory.
 		label: Optional label to filter by.
 
 	Returns:
-		Sorted list of audio file paths from data/normalized/.
+		Sorted list of audio file paths.
 	"""
-	norm_dir = project_normalized_dir(project_dir)
-	if not norm_dir.exists():
-		return []
+	collected: list[Path] = []
 
-	files = sorted(
-		[path for path in norm_dir.iterdir() if path.is_file() and path.suffix.lower() in SUPPORTED_AUDIO_SUFFIXES],
-		key=lambda path: path.name.lower(),
-	)
+	norm_dir = project_normalized_dir(project_dir)
+	if norm_dir.exists():
+		collected.extend(
+			path for path in norm_dir.iterdir()
+			if path.is_file() and path.suffix.lower() in SUPPORTED_AUDIO_SUFFIXES
+		)
+
+	derived_dir = project_derived_dir(project_dir)
+	if derived_dir.exists():
+		collected.extend(
+			path for path in derived_dir.iterdir()
+			if path.is_file() and path.suffix.lower() in SUPPORTED_AUDIO_SUFFIXES
+		)
+
+	files = sorted(collected, key=lambda path: path.name.lower())
 
 	if label is not None:
 		labels = load_file_labels(project_dir)
