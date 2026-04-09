@@ -77,8 +77,9 @@ pixi run triton files delete-label <project_dir> "<label>" [--yes]
 
 Delete every file that has the given label.
 
-- Removes matching files from `data/normalized/`
+- Removes matching files from `data/normalized/` and `data/derived/`
 - Removes matching raw counterparts from `data/raw/` (same stem)
+- Removes provenance sidecars (`.json`) and spectrogram files (`.spectrogram.npz`) for each deleted file
 - Removes label entries for deleted files from `metadata/file_labels.json`
 
 **Examples:**
@@ -104,6 +105,8 @@ When files are imported:
    - Converted to the project channel mode (mono/stereo)
    - Saved with the project bit depth and file format
 3. A spectrogram artifact is precomputed for the normalized file.
+
+Generated artifacts (e.g. babble mixes saved via **Add to project**) are written to `data/derived/` and also appear in the file list.
 
 ### Label Files
 
@@ -182,4 +185,4 @@ my-project/
 - The `(None)` filter in the GUI shows only files with no labels.
 - Babble generation scans all labels on each file for the `bab-f<n>` / `bab-m<n>` pattern.
 - Normalization runs automatically on import; existing raw files are not retroactively normalized.
-- Removing a file does not automatically remove its label entry.
+- Deleting a file removes its raw source, its normalized copy, and all companion files (sidecar `.json`, spectrogram `.spectrogram.npz`). Label entries are not automatically pruned by `delete_project_file` but are cleaned up by `delete_project_files_by_label`.

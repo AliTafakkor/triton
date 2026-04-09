@@ -99,6 +99,7 @@ Project config includes a `[spectrogram]` section with defaults used at import t
 - `project_config_path(project_dir)`
 - `project_raw_dir(project_dir)` — `data/raw/`
 - `project_normalized_dir(project_dir)` — `data/normalized/`
+- `project_derived_dir(project_dir)` — `data/derived/`
 
 ## Recent projects
 
@@ -108,13 +109,14 @@ Project config includes a `[spectrogram]` section with defaults used at import t
 
 ## File management
 
-- `list_project_files(project_dir, label=None)` — list raw audio files, optionally filtered by label
-- `list_normalized_project_files(project_dir)` — list normalized audio files in `data/normalized/`
+- `list_project_files(project_dir, label=None)` — list audio files from both `data/normalized/` and the top level of `data/derived/`, optionally filtered by label
+- `list_normalized_project_files(project_dir)` — list only the normalized audio files in `data/normalized/`
 - `add_project_file(project_dir, filename, content)` — write raw bytes to `data/raw/`
 - `normalize_project_file(project_dir, raw_path, project)` — convert a raw file to the project spec and save to `data/normalized/`
+- `save_project_generated_audio(project_dir, filename, audio, sr, ...)` — save a generated artifact to `data/derived/` with optional label and provenance sidecar
 - `rename_project_file(file_path, new_name)`
-- `delete_project_file(file_path)`
-- `delete_project_files_by_label(project_dir, label)` — delete all normalized files with a given label (and matching raw stems)
+- `delete_project_file(file_path)` — delete a file and **all associated artefacts**: raw source (`data/raw/`), normalized copy (`data/normalized/`), provenance sidecar (`.json`), and spectrogram (`.spectrogram.npz`)
+- `delete_project_files_by_label(project_dir, label)` — delete all project files with a given label using `delete_project_file` for each
 - `sanitize_filename(name)`
 
 ## File labels
