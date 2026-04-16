@@ -7,6 +7,7 @@ from pathlib import Path
 import typer
 
 from triton.core.ramp import RAMP_SHAPES, apply_ramp
+from triton.degrade.noise_mixer import add_noise
 from triton.degrade.vocoder import noise_vocode
 from triton.degrade.speech_noise import (
 	speech_shaped_noise,
@@ -85,6 +86,55 @@ def vocode(
 		rel_name = audio_path.name if input_path.is_file() else audio_path.relative_to(input_path)
 		out_path = output_dir / rel_name
 		save_audio(out_path, vocoded, sr)
+		typer.echo(f"Wrote {out_path}")
+
+
+@degrade_app.command("add-noise")
+def add_noise_command(
+	input_path: Path = typer.Argument(..., help="Speech file or directory"),
+	output_dir: Path = typer.Option(Path("outputs/noisy"), help="Output directory"),
+	noise_type: str = typer.Option("auto", help="Noise type: auto, babble, white, colored, or ssn"),
+	noise_file: Path | None = typer.Option(None, help="Optional noise file path (required for babble type)"),
+	snr_db: float = typer.Option(0.0, help="Target SNR in dB"),
+	seed: int | None = typer.Option(None, help="Optional random seed"),
+	sample_rate: int | None = typer.Option(None, "--sr", help="Optional resample rate for input/noise"),
+):
+	"""Add noise to speech using a file-backed or generated noise source.
+
+	When ``--noise-type auto`` and ``--noise-file`` stem matches ``bab-tN``,
+	the file is treated as a multitalker babble source automatically.
+	"""
+	input_path = input_path.expanduser().resolve()
+	output_dir = output_dir.expanduser().resolve()
+	output_dir.mkdir(parents=True, exist_ok=True)
+
+	resolved_noise_file = noise_file.expanduser().resolve() if noise_file is not None else None
+	if resolved_noise_file is not None and not resolved_noise_file.exists():
+		raise typer.BadParameter("Noise file does not exist.")
+
+	clean_noise_type = noise_type.strip().lower()
+	if clean_noise_type == "babble" and resolved_noise_file is None:
+		raise typer.BadParameter("Babble noise requires --noise-file; add_noise will not generate babble.")
+
+	try:
+		files = list(iter_audio_files(input_path))
+	except ValueError as exc:
+		raise typer.BadParameter(str(exc)) from exc
+
+	for speech_path in files:
+		speech, sr = load_audio(speech_path, sr=sample_rate, mono=True)
+		mixed = add_noise(
+			speech,
+			snr_db=snr_db,
+			noise_type=clean_noise_type,
+			noise_file=resolved_noise_file,
+			sample_rate=sr,
+			seed=seed,
+		)
+
+		rel_name = speech_path.name if input_path.is_file() else speech_path.relative_to(input_path)
+		out_path = output_dir / rel_name
+		save_audio(out_path, mixed, sr)
 		typer.echo(f"Wrote {out_path}")
 
 
