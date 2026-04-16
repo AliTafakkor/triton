@@ -35,12 +35,18 @@ def _delete_pipeline_step(step_index: int) -> None:
 	key_prefixes = [
 		"pipeline_editor_step_",
 		"pipeline_step_target_peak_",
+		"pipeline_step_target_rms_",
 		"pipeline_step_target_mode_",
 		"pipeline_step_custom_sr_",
 		"pipeline_step_bit_depth_",
 		"pipeline_step_n_bands_",
 		"pipeline_step_vocoder_type_",
 		"pipeline_step_envelope_cutoff_",
+		"pipeline_step_noise_type_",
+		"pipeline_step_snr_db_",
+		"pipeline_step_noise_project_file_",
+		"pipeline_step_noise_file_",
+		"pipeline_step_noise_seed_",
 		"pipeline_step_compress_factor_",
 		"pipeline_step_ramp_start_",
 		"pipeline_step_ramp_end_",
@@ -86,12 +92,19 @@ def _open_pipeline_editor(mode: str, project: Project, pipeline: Pipeline | None
 		options = {**defaults, **stored}
 
 		st.session_state[f"pipeline_step_target_peak_{index}"] = float(options.get("target_peak", 0.99))
+		st.session_state[f"pipeline_step_target_rms_{index}"] = float(options.get("target_rms", 0.1))
 		st.session_state[f"pipeline_step_target_mode_{index}"] = str(options.get("target_mode", "project"))
 		st.session_state[f"pipeline_step_custom_sr_{index}"] = int(options.get("custom_sr", int(project.sample_rate)))
 		st.session_state[f"pipeline_step_bit_depth_{index}"] = int(options.get("bit_depth", 16))
 		st.session_state[f"pipeline_step_n_bands_{index}"] = int(options.get("n_bands", 8))
 		st.session_state[f"pipeline_step_vocoder_type_{index}"] = str(options.get("vocoder_type", "noise"))
 		st.session_state[f"pipeline_step_envelope_cutoff_{index}"] = float(options.get("envelope_cutoff", 160.0))
+		st.session_state[f"pipeline_step_noise_type_{index}"] = str(options.get("noise_type", "auto"))
+		st.session_state[f"pipeline_step_snr_db_{index}"] = float(options.get("snr_db", 0.0))
+		st.session_state[f"pipeline_step_noise_project_file_{index}"] = str(options.get("noise_project_file", ""))
+		st.session_state[f"pipeline_step_noise_file_{index}"] = str(options.get("noise_file", ""))
+		seed_value = options.get("seed")
+		st.session_state[f"pipeline_step_noise_seed_{index}"] = int(seed_value) if seed_value is not None and str(seed_value).strip() != "" else -1
 		st.session_state[f"pipeline_step_compress_factor_{index}"] = float(options.get("factor", 1.0))
 		st.session_state[f"pipeline_step_ramp_start_{index}"] = float(options.get("ramp_start", 0.05))
 		st.session_state[f"pipeline_step_ramp_end_{index}"] = float(options.get("ramp_end", 0.05))
@@ -111,12 +124,18 @@ def _delete_pipeline_step(step_index: int) -> None:
 	key_prefixes = [
 		"pipeline_editor_step_",
 		"pipeline_step_target_peak_",
+		"pipeline_step_target_rms_",
 		"pipeline_step_target_mode_",
 		"pipeline_step_custom_sr_",
 		"pipeline_step_bit_depth_",
 		"pipeline_step_n_bands_",
 		"pipeline_step_vocoder_type_",
 		"pipeline_step_envelope_cutoff_",
+		"pipeline_step_noise_type_",
+		"pipeline_step_snr_db_",
+		"pipeline_step_noise_project_file_",
+		"pipeline_step_noise_file_",
+		"pipeline_step_noise_seed_",
 		"pipeline_step_compress_factor_",
 		"pipeline_step_ramp_start_",
 		"pipeline_step_ramp_end_",
@@ -142,7 +161,7 @@ def _request_delete_pipeline_step(step_index: int) -> None:
 	st.session_state["pipeline_editor_delete_request"] = int(step_index)
 
 
-def _render_step_options_editor(step: str, index: int, project: Project) -> dict[str, object]:
+def _render_step_options_editor(step: str, index: int, project: Project, project_files: list[Path]) -> dict[str, object]:
 	if step == "normalize":
 		target_peak = st.slider("Target peak", min_value=0.10, max_value=1.0, value=float(st.session_state.get(f"pipeline_step_target_peak_{index}", 0.99)), step=0.01, key=f"pipeline_step_target_peak_{index}")
 		return {"target_peak": float(target_peak)}
@@ -170,6 +189,48 @@ def _render_step_options_editor(step: str, index: int, project: Project) -> dict
 		vocoder_type = st.selectbox("Carrier", options=["noise", "sine"], key=f"pipeline_step_vocoder_type_{index}")
 		envelope_cutoff = st.slider("Envelope cutoff (Hz)", min_value=20.0, max_value=400.0, value=float(st.session_state.get(f"pipeline_step_envelope_cutoff_{index}", 160.0)), step=5.0, key=f"pipeline_step_envelope_cutoff_{index}")
 		return {"n_bands": int(n_bands), "vocoder_type": str(vocoder_type), "envelope_cutoff": float(envelope_cutoff)}
+
+	if step == "add_noise":
+		project_noise_options = [""] + [str(path.relative_to(project.path)) for path in project_files]
+		stored_project_noise = str(st.session_state.get(f"pipeline_step_noise_project_file_{index}", ""))
+		if stored_project_noise not in project_noise_options:
+			project_noise_options.append(stored_project_noise)
+		noise_type = st.selectbox(
+			"Noise type",
+			options=["auto", "babble", "white", "colored", "ssn"],
+			key=f"pipeline_step_noise_type_{index}",
+		)
+		snr_db = st.slider(
+			"Target SNR (dB)",
+			min_value=-40.0,
+			max_value=40.0,
+			value=float(st.session_state.get(f"pipeline_step_snr_db_{index}", 0.0)),
+			step=0.5,
+			key=f"pipeline_step_snr_db_{index}",
+		)
+		noise_project_file = st.selectbox(
+			"Noise source (project file)",
+			options=project_noise_options,
+			key=f"pipeline_step_noise_project_file_{index}",
+			format_func=lambda value: "(none)" if value == "" else value,
+			help="Select an existing project audio file as the noise source.",
+		)
+		seed_value = st.number_input(
+			"Random seed (-1 for random)",
+			min_value=-1,
+			max_value=2_147_483_647,
+			value=int(st.session_state.get(f"pipeline_step_noise_seed_{index}", -1)),
+			step=1,
+			key=f"pipeline_step_noise_seed_{index}",
+		)
+		options: dict[str, object] = {
+			"noise_type": str(noise_type),
+			"snr_db": float(snr_db),
+			"noise_project_file": str(noise_project_file).strip(),
+		}
+		if int(seed_value) >= 0:
+			options["seed"] = int(seed_value)
+		return options
 
 	if step == "time_compress":
 		factor = st.slider("Compression factor", min_value=0.1, max_value=10.0, value=float(st.session_state.get(f"pipeline_step_compress_factor_{index}", 1.0)), step=0.1, key=f"pipeline_step_compress_factor_{index}", help="< 1.0 = faster (compression), > 1.0 = slower (expansion)")
@@ -302,7 +363,7 @@ def _render_pipelines_tab(project: Project, project_files: list[Path]) -> None:
 							st.button("✕", key=f"pipeline_editor_delete_step_{order_index}", disabled=step_count <= 1, on_click=_request_delete_pipeline_step, args=(order_index,))
 						steps.append(step)
 						st.caption("Step options")
-						options = _render_step_options_editor(step, order_index, project)
+						options = _render_step_options_editor(step, order_index, project, project_files)
 						if options:
 							step_options_by_index[str(order_index)] = options
 

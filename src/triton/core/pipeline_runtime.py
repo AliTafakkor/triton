@@ -11,8 +11,9 @@ import numpy as np
 
 from triton.core.conversion import requantize
 from triton.core.io import load_audio, normalize_peak, normalize_rms, save_audio
-from triton.core.project import Pipeline, Project
+from triton.core.project import Pipeline, Project, list_project_files
 from triton.core.ramp import apply_ramp
+from triton.degrade.noise_mixer import add_noise
 from triton.degrade.time_compression import compress_time
 from triton.degrade.vocoder import noise_vocode
 
@@ -25,6 +26,7 @@ PIPELINE_ACTIONS: dict[str, str] = {
 	"to_stereo": "Convert to stereo",
 	"requantize_16": "Requantize to 16-bit",
 	"vocode_noise": "Noise vocoder degradation",
+	"add_noise": "Add noise at target SNR",
 	"time_compress": "Time compression (Praat/Parselmouth)",
 	"ramp": "Fade in / Fade out (ramp)",
 }
@@ -48,6 +50,14 @@ def default_step_options(step: str, project_sr: int) -> dict[str, object]:
 		return {"bit_depth": 16}
 	if step == "vocode_noise":
 		return {"n_bands": 8, "vocoder_type": "noise", "envelope_cutoff": 160.0}
+	if step == "add_noise":
+		return {
+			"noise_type": "auto",
+			"snr_db": 0.0,
+			"noise_project_file": "",
+			"noise_file": "",
+			"seed": None,
+		}
 	if step == "time_compress":
 		return {"factor": 1.0}
 	if step == "ramp":
@@ -107,6 +117,26 @@ def _convert_channels(audio: np.ndarray, channel_mode: str) -> np.ndarray:
 		return np.repeat(audio, 2, axis=1).astype(np.float32)
 
 	return audio.astype(np.float32)
+
+
+def _resolve_project_noise_file(project: Project, selection: str) -> Path | None:
+	"""Resolve a pipeline noise selection to an existing project audio file."""
+	clean = selection.strip()
+	if not clean:
+		return None
+
+	if "/" in clean:
+		candidate = (project.path / clean).resolve()
+		if candidate.exists() and candidate.is_file():
+			return candidate
+		raise ValueError(f"Selected project noise file does not exist: {clean}")
+
+	matches = [path for path in list_project_files(project.path) if path.name == clean]
+	if not matches:
+		raise ValueError(f"Selected project noise file was not found in project library: {clean}")
+	if len(matches) > 1:
+		raise ValueError(f"Selected noise file name is ambiguous: {clean}. Select a path entry instead.")
+	return matches[0]
 
 
 def apply_pipeline_step(
@@ -172,6 +202,40 @@ def apply_pipeline_step(
 			envelope_cutoff=envelope_cutoff,
 			vocoder_type=vocoder_type,
 		), sr
+
+	if step == "add_noise":
+		noise_type = str(options.get("noise_type", "auto"))
+		snr_db = float(options.get("snr_db", 0.0))
+		project_noise_value = str(options.get("noise_project_file", "")).strip()
+		noise_file = _resolve_project_noise_file(project, project_noise_value)
+		noise_file_value = str(options.get("noise_file", "")).strip()
+		if noise_file is None and noise_file_value:
+			noise_file = Path(noise_file_value).expanduser()
+			if not noise_file.is_absolute():
+				noise_file = (project.path / noise_file).resolve()
+		seed_raw = options.get("seed")
+		seed = int(seed_raw) if seed_raw is not None and str(seed_raw).strip() != "" else None
+
+		if audio.ndim == 1:
+			return add_noise(
+				audio,
+				snr_db=snr_db,
+				noise_type=noise_type,
+				noise_file=noise_file,
+				sample_rate=sr,
+				seed=seed,
+			), sr
+
+		channel_major = np.asarray(audio, dtype=np.float32).T
+		mixed = add_noise(
+			channel_major,
+			snr_db=snr_db,
+			noise_type=noise_type,
+			noise_file=noise_file,
+			sample_rate=sr,
+			seed=seed,
+		)
+		return np.asarray(mixed, dtype=np.float32).T, sr
 
 	if step == "time_compress":
 		factor = float(options.get("factor", 1.0))
