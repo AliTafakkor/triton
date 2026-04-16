@@ -182,6 +182,21 @@ data/derived/pipelines/<pipeline_key>/run_<timestamp>_<id>/
 
 For each processed input file, every step emits a step artifact (`.wav`) and a sidecar provenance JSON (`.wav.json`).
 
+### Add Noise Step
+
+The pipeline editor includes an `add_noise` step with these options:
+
+- `noise_type`: `auto`, `babble`, `white`, `colored`, `ssn`
+- `snr_db`: target SNR in dB
+- `noise_project_file`: select a noise source from existing project audio files
+- `seed`: optional random seed
+
+Notes:
+
+- `babble` in this step is file-backed only and is not generated.
+- With `noise_type=auto`, files named like `bab-t8.wav` are auto-recognized as multitalker babble sources.
+- If the provided noise is longer than the speech signal, Triton randomly selects a same-length segment before mixing.
+
 ### Sidecar Provenance
 
 Step sidecars include:
