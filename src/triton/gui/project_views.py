@@ -170,17 +170,17 @@ def _render_matrix_tab(
             "Select a pipeline, then define matrix values directly per step option. Triton builds the CSV from those combinations."
         )
 
-        with st.form("generate_matrix_form"):
-            selected_pipeline = st.selectbox(
-                "Select pipeline",
-                options=pipeline_names,
-                key="matrix_gen_pipeline",
-            )
+        selected_pipeline = st.selectbox(
+            "Select pipeline",
+            options=pipeline_names,
+            key="matrix_gen_pipeline",
+        )
 
+        pipeline = next(p for p in pipelines if p.name == selected_pipeline)
+
+        with st.form("generate_matrix_form"):
             st.markdown("##### Parameter specifications")
             st.caption("Enter comma-separated values for any step option you want to sweep.")
-
-            pipeline = next(p for p in pipelines if p.name == selected_pipeline)
             step_blocks = _pipeline_matrix_option_defaults(project, pipeline)
             param_specs: list[str] = []
 
@@ -323,16 +323,16 @@ def _render_matrix_tab(
         st.markdown("#### Run Matrix from CSV")
         st.write("Select a saved matrix CSV, upload one, or provide a direct path to execute parameter combinations.")
 
+        run_pipeline = st.selectbox(
+            "Select pipeline",
+            options=pipeline_names,
+            key="matrix_run_pipeline",
+        )
+
+        saved_csvs = _list_saved_matrix_csvs(project, run_pipeline)
+        saved_names = [item.name for item in saved_csvs]
+
         with st.form("run_matrix_form"):
-            run_pipeline = st.selectbox(
-                "Select pipeline",
-                options=pipeline_names,
-                key="matrix_run_pipeline",
-            )
-
-            saved_csvs = _list_saved_matrix_csvs(project, run_pipeline)
-            saved_names = [item.name for item in saved_csvs]
-
             source_mode = st.radio(
                 "Matrix source",
                 options=["Saved", "Upload", "Path"],
@@ -343,7 +343,7 @@ def _render_matrix_tab(
             selected_saved_csv = st.selectbox(
                 "Saved matrix CSV",
                 options=saved_names,
-                key="matrix_run_saved_csv",
+                key=f"matrix_run_saved_csv_{run_pipeline}",
                 disabled=not saved_names,
                 help="CSV files from metadata/matrices/<pipeline>/",
             )
