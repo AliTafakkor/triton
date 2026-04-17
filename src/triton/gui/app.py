@@ -709,8 +709,8 @@ def _render_step_options_editor(step: str, index: int, project: Project) -> dict
 	return {}
 
 
-def _render_pipelines_tab(project: Project, project_files: list[Path]) -> None:
-	_render_pipelines_tab_module(project, project_files)
+def _render_pipelines_tab(project: Project, project_files: list[Path], mode: str = "all") -> None:
+	_render_pipelines_tab_module(project, project_files, mode=mode)
 
 
 def _render_project_workspace(project: Project) -> None:
@@ -895,11 +895,14 @@ def _render_project_workspace(project: Project) -> None:
 		_render_rss_ingest_tab(project)
 
 	with pipelines_tab:
-		run_subtab, matrix_subtab = st.tabs(["Run Pipeline", "Pipeline Matrix"])
-		
+		design_subtab, run_subtab, matrix_subtab = st.tabs(["Design Pipelines", "Run Pipelines", "Pipeline Matrix"])
+
+		with design_subtab:
+			_render_pipelines_tab(project, project_files, mode="design")
+
 		with run_subtab:
-			_render_pipelines_tab(project, project_files)
-		
+			_render_pipelines_tab(project, project_files, mode="run")
+
 		with matrix_subtab:
 			_render_matrix_tab(
 				project,
