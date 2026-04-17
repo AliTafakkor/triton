@@ -69,6 +69,7 @@ def matrix_run(
 	pipeline_name: str = typer.Argument(..., help="Pipeline name defined in triton.toml"),
 	matrix_csv: Path = typer.Argument(..., help="CSV matrix path"),
 	run_id: str | None = typer.Option(None, help="Optional run id"),
+	group_finals_by_params: bool = typer.Option(False, "--group-finals-by-params", help="Copy final outputs into folders grouped by parameter set"),
 ) -> None:
 	"""Run a pipeline for every row in a matrix CSV."""
 	project_dir = project_dir.expanduser().resolve()
@@ -81,6 +82,7 @@ def matrix_run(
 		pipeline,
 		matrix_csv=matrix_csv.expanduser().resolve(),
 		run_id=resolved_run_id,
+		collect_finals_by_params=group_finals_by_params,
 	)
 
 	typer.echo(f"Run folder: {base_run_dir}")
@@ -97,6 +99,7 @@ def matrix_run(
 			"run_id": resolved_run_id,
 			"matrix_csv": str(matrix_csv),
 			"run_dir": str(base_run_dir),
+			"group_finals_by_params": bool(group_finals_by_params),
 			"succeeded": len(successes),
 			"failed": len(errors),
 		},

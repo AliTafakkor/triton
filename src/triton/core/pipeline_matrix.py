@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 import csv
 import itertools
 from pathlib import Path
+import re
+import shutil
 
 from triton.core.pipeline_runtime import pipeline_run_dir, run_pipeline_on_file
 from triton.core.project import Pipeline, Project
@@ -99,6 +101,27 @@ def _merge_step_options(base: dict[str, dict[str, object]], row_overrides: dict[
 	return merged
 
 
+def _row_override_signature(row_overrides: dict[str, dict[str, object]]) -> tuple[tuple[str, str], ...]:
+	flattened: list[tuple[str, str]] = []
+	for step_ref in sorted(row_overrides.keys()):
+		for option_name in sorted(row_overrides[step_ref].keys()):
+			flattened.append((f"{step_ref}.{option_name}", str(row_overrides[step_ref][option_name])))
+	return tuple(flattened)
+
+
+def _sanitize_slug(text: str) -> str:
+	clean = re.sub(r"[^A-Za-z0-9._-]+", "-", text).strip("-._")
+	return clean or "set"
+
+
+def _signature_label(signature: tuple[tuple[str, str], ...]) -> str:
+	if not signature:
+		return "default"
+	parts = [f"{key}={value}" for key, value in signature[:3]]
+	label = "__".join(parts)
+	return _sanitize_slug(label)[:72]
+
+
 def generate_matrix_csv(
 	project: Project,
 	pipeline: Pipeline,
@@ -141,6 +164,8 @@ def run_matrix_csv(
 	pipeline: Pipeline,
 	matrix_csv: Path,
 	run_id: str,
+	collect_finals_by_params: bool = False,
+	progress_callback: Callable[[int, int, str], None] | None = None,
 ) -> tuple[list[Path], list[str], Path]:
 	if not matrix_csv.exists():
 		raise FileNotFoundError(f"Matrix CSV does not exist: {matrix_csv}")
@@ -148,14 +173,22 @@ def run_matrix_csv(
 	base_run_dir = pipeline_run_dir(project, pipeline.name, run_id)
 	successes: list[Path] = []
 	errors: list[str] = []
+	param_set_dirs: dict[tuple[tuple[str, str], ...], Path] = {}
+	finals_root = base_run_dir / "final_by_params"
+	if collect_finals_by_params:
+		finals_root.mkdir(parents=True, exist_ok=True)
 
 	with matrix_csv.open("r", encoding="utf-8", newline="") as handle:
 		reader = csv.DictReader(handle)
 		if not reader.fieldnames or MATRIX_FILE_COLUMN not in set(reader.fieldnames):
 			raise ValueError(f"Matrix CSV must include '{MATRIX_FILE_COLUMN}' column.")
+		rows = list(reader)
+		total_rows = len(rows)
 
-		for row_index, row in enumerate(reader, start=1):
+		for row_index, row in enumerate(rows, start=1):
 			file_value = str(row.get(MATRIX_FILE_COLUMN, "")).strip()
+			if progress_callback is not None:
+				progress_callback(row_index, total_rows, file_value)
 			if not file_value:
 				errors.append(f"row {row_index}: missing file value")
 				continue
@@ -171,5 +204,22 @@ def run_matrix_csv(
 				errors.append(f"row {row_index}: {file_value}: {exc}")
 			else:
 				successes.append(final_path)
+				if collect_finals_by_params:
+					signature = _row_override_signature(row_overrides)
+					if signature not in param_set_dirs:
+						set_index = len(param_set_dirs) + 1
+						set_label = _signature_label(signature)
+						set_dir = finals_root / f"set_{set_index:04d}_{set_label}"
+						set_dir.mkdir(parents=True, exist_ok=True)
+						param_set_dirs[signature] = set_dir
+					set_dir = param_set_dirs[signature]
+					dest_path = set_dir / file_path.name
+					if dest_path.exists():
+						dest_path = set_dir / f"row_{row_index:04d}_{file_path.name}"
+					shutil.copy2(final_path, dest_path)
+					sidecar = final_path.with_suffix(f"{final_path.suffix}.json")
+					if sidecar.exists():
+						sidecar_dest = dest_path.with_suffix(f"{dest_path.suffix}.json")
+						shutil.copy2(sidecar, sidecar_dest)
 
 	return successes, errors, base_run_dir

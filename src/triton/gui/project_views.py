@@ -370,6 +370,13 @@ def _render_matrix_tab(
                 key="matrix_custom_run_id",
             )
 
+            group_finals_by_params = st.checkbox(
+                "Group final outputs by parameter set",
+                value=False,
+                key="matrix_group_finals_by_params",
+                help="Creates run folder final_by_params/set_####_* folders with final files for each parameter combination.",
+            )
+
             run_submitted = st.form_submit_button("Execute Matrix", type="primary")
 
         if run_submitted:
@@ -403,13 +410,25 @@ def _render_matrix_tab(
                         matrix_csv_path = candidate if candidate.is_absolute() else (project.path / candidate)
                     matrix_csv_path = matrix_csv_path.resolve()
 
+                    matrix_progress = st.progress(0.0, text=f"Preparing matrix run for {run_pipeline}...")
+
+                    def _update_matrix_progress(current: int, total: int, file_value: str) -> None:
+                        if total <= 0:
+                            matrix_progress.progress(0.0, text=f"{run_pipeline}: preparing rows...")
+                            return
+                        display_name = file_value or "<missing file>"
+                        matrix_progress.progress(current / total, text=f"{run_pipeline}: row {current}/{total} - {display_name}")
+
                     with st.spinner(f"Executing matrix on pipeline '{run_pipeline}' with {run_id}..."):
                         successes, errors, base_run_dir = run_matrix_csv(
                             project,
                             pipeline,
                             matrix_csv_path,
                             run_id,
+                            collect_finals_by_params=group_finals_by_params,
+                            progress_callback=_update_matrix_progress,
                         )
+                    matrix_progress.progress(1.0, text=f"Completed matrix run for {run_pipeline}")
 
                     if temp_csv is not None:
                         temp_csv.unlink(missing_ok=True)
@@ -417,6 +436,8 @@ def _render_matrix_tab(
                     if successes:
                         st.success(f"Completed {len(successes)} row(s) successfully.")
                         st.caption(f"Run output folder: {base_run_dir}")
+                        if group_finals_by_params:
+                            st.caption(f"Grouped finals folder: {base_run_dir / 'final_by_params'}")
                         with st.expander("View successful outputs"):
                             for output in successes:
                                 st.caption(str(output))
@@ -435,6 +456,7 @@ def _render_matrix_tab(
                             "run_id": run_id,
                             "matrix_csv": str(matrix_csv_path),
                             "source_mode": source_mode,
+                            "group_finals_by_params": bool(group_finals_by_params),
                             "succeeded": len(successes),
                             "failed": len(errors),
                         },

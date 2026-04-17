@@ -362,15 +362,19 @@ def _render_pipelines_tab(project: Project, project_files: list[Path], mode: str
 						errors: list[str] = []
 						run_id = _new_pipeline_run_id()
 						run_dir = _pipeline_run_dir(project, selected_pipeline.name, run_id)
+						total_files = len(selected_paths)
+						progress_bar = st.progress(0.0, text=f"Preparing {selected_pipeline.name}...")
 
 						with st.spinner(f"Running {selected_pipeline.name} on {len(selected_paths)} file(s)..."):
-							for file_path in selected_paths:
+							for index, file_path in enumerate(selected_paths, start=1):
+								progress_bar.progress(index / total_files, text=f"{selected_pipeline.name}: {index}/{total_files} - {file_path.name}")
 								try:
 									output_path = _run_pipeline_on_file(file_path, project, selected_pipeline, run_dir)
 								except Exception as exc:
 									errors.append(f"{file_path.name}: {exc}")
 								else:
 									successes.append(output_path)
+						progress_bar.progress(1.0, text=f"Completed {selected_pipeline.name} run")
 
 						if successes:
 							st.success(f"Processed {len(successes)} file(s).")
