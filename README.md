@@ -15,7 +15,7 @@ Triton is a modular audio utility designed to standardize stimuli preparation an
 
 **Babble Speech Generation**: Mix labeled talker groups (`bab-f1`, `bab-m1`, …), normalize each source file to a common RMS, concatenate per talker, and generate cocktail-party scenarios with balanced male/female selection. Generated babble is added back to the project as a labeled derivative with a provenance sidecar.
 
-**Pipeline Matrix**: Define a pipeline once, then sweep across multiple files and parameter combinations in a single reproducible batch. Generate a CSV of file × parameter combinations and run them all at once, with isolated outputs per row for easy comparison and aggregation.
+**Pipeline Matrix**: Define a pipeline once, then sweep across multiple files and parameter combinations in a single reproducible batch. Generate a CSV of file × parameter combinations and run them all at once, with isolated outputs per row for easy comparison and aggregation. Matrix CSVs are saved under `metadata/matrices/<pipeline_name>/` so each matrix is clearly tied to its pipeline, and matrix runs can optionally group final outputs by parameter set into clean folders.
 
 **Audio ramping**: Apply fade-in and/or fade-out envelopes with four selectable shapes — `linear`, `exponential`, `logarithmic`, and `cosine` (smooth S-curve, default). Available as a pipeline step in the GUI, a CLI subcommand (`triton degrade ramp`), and a Python API (`triton.core.apply_ramp`).
 
@@ -35,6 +35,7 @@ my-project/
   metadata/
     file_labels.json    ← multi-label store per file
     project.log.jsonl   ← append-only audit log of all events
+    matrices/           ← saved matrix CSVs grouped by pipeline
 ```
 
 ## Project Config (`triton.toml`)
@@ -101,6 +102,16 @@ Triton uses symmetric RMS-based SNR scaling for mixing:
             step_02_<step_key>/
               ...
 ```
+
+## Matrix CSV Storage
+
+Generated matrix CSVs are stored per pipeline:
+
+```text
+<project>/metadata/matrices/<pipeline_name>/<pipeline_name>.matrix.csv
+```
+
+In the GUI Matrix tab, you can run a matrix from a saved CSV (browse/select), upload a CSV, or provide a direct path.
 
 ## Sidecar Provenance
 

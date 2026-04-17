@@ -6,7 +6,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from triton.core.project import Pipeline, Project, log_project_event
+from triton.core.project import Pipeline, Project, load_file_labels, log_project_event, list_project_files
 from triton.core.pipeline_runtime import PIPELINE_ACTIONS, PIPELINE_DEFAULT_STEP, PIPELINE_STEP_ORDER
 from triton.core.ramp import RAMP_SHAPES
 from triton.gui.shared import (
@@ -246,42 +246,64 @@ def _render_step_options_editor(step: str, index: int, project: Project, project
 	return {}
 
 
-def _render_pipelines_tab(project: Project, project_files: list[Path]) -> None:
+def _render_pipelines_tab(project: Project, project_files: list[Path], mode: str = "all") -> None:
+	show_designer = mode in {"all", "design"}
+	show_runner = mode in {"all", "run"}
+	if mode not in {"all", "design", "run"}:
+		raise ValueError(f"Unsupported pipelines tab mode: {mode}")
+
+	project_key = _pipeline_key(str(project.path))
+	selected_pipeline_state_key = f"selected_pipeline_name_{project_key}_{mode}"
+	selection_mode_key = f"pipeline_selection_mode_{project_key}_{mode}"
+
 	pipelines = _load_pipelines(project)
 	pipeline_names = [item.name for item in pipelines]
 
 	pending_selected_pipeline = st.session_state.pop("pending_selected_pipeline_name", None)
 	if pending_selected_pipeline is not None:
 		if pending_selected_pipeline == "__clear__":
-			st.session_state.pop("selected_pipeline_name", None)
+			st.session_state.pop(selected_pipeline_state_key, None)
 		elif pending_selected_pipeline in set(pipeline_names):
-			st.session_state["selected_pipeline_name"] = pending_selected_pipeline
+			st.session_state[selected_pipeline_state_key] = pending_selected_pipeline
 
-	if pipeline_names and st.session_state.get("selected_pipeline_name") not in set(pipeline_names):
-		st.session_state["selected_pipeline_name"] = pipeline_names[0]
+	if pipeline_names and st.session_state.get(selected_pipeline_state_key) not in set(pipeline_names):
+		st.session_state[selected_pipeline_state_key] = pipeline_names[0]
 
-	st.markdown("### Pipelines")
-	st.write("Default view shows your pipeline list. Pick one to run or edit, or create a new pipeline from the right panel.")
+	if show_designer and show_runner:
+		st.markdown("### Pipelines")
+		st.write("Design, run, and maintain project pipelines.")
+	elif show_designer:
+		st.markdown("### Pipeline Designer")
+		st.write("Create and edit pipeline definitions and step options.")
+	else:
+		st.markdown("### Pipeline Runner")
+		st.write("Choose an existing pipeline and run it on selected project files.")
 
-	main_col, editor_col = st.columns([1.9, 1.1], gap="large")
+	if show_designer:
+		main_col, editor_col = st.columns([1.9, 1.1], gap="large")
+	else:
+		main_col = st.container()
+		editor_col = None
 
 	with main_col:
-		action_col1, action_col2 = st.columns(2)
-		if action_col1.button("New pipeline", type="primary"):
-			_open_pipeline_editor("create", project)
-			st.rerun()
+		if show_designer:
+			action_col1, action_col2 = st.columns(2)
+			if action_col1.button("New pipeline", type="primary"):
+				_open_pipeline_editor("create", project)
+				st.rerun()
 
 		selected_pipeline: Pipeline | None = None
 		if pipeline_names:
-			selected_name = st.radio("Created pipelines", options=pipeline_names, key="selected_pipeline_name")
+			selected_name = st.radio("Created pipelines", options=pipeline_names, key=selected_pipeline_state_key)
 			selected_pipeline = next((item for item in pipelines if item.name == selected_name), None)
 
-			if action_col2.button("Edit selected"):
+			if show_designer and action_col2.button("Edit selected"):
 				if selected_pipeline is not None:
 					_open_pipeline_editor("edit", project, selected_pipeline)
 					st.rerun()
 		else:
-			action_col2.button("Edit selected", disabled=True)
+			if show_designer:
+				action_col2.button("Edit selected", disabled=True)
 			st.info("No pipelines yet. Click New pipeline to create your first one.")
 
 		if selected_pipeline is not None:
@@ -289,108 +311,152 @@ def _render_pipelines_tab(project: Project, project_files: list[Path]) -> None:
 			for index, step in enumerate(selected_pipeline.steps, start=1):
 				st.caption(f"{index}. {_pipeline_action_label(step)} ({step})")
 
-			run_files = st.multiselect("Files to run", options=[path.name for path in project_files], help="Choose one or more project files for this pipeline.")
+			if show_runner:
+				# File selection mode
+				selection_mode = st.radio(
+					"Select files by:",
+					options=["Files", "Label(s)"],
+					horizontal=True,
+					key=selection_mode_key
+				)
 
-			run_col, delete_col = st.columns(2)
-			if run_col.button("Run selected pipeline", type="primary"):
-				if not run_files:
-					st.error("Select at least one file.")
-				else:
-					selected_paths = [path for path in project_files if path.name in set(run_files)]
-					successes: list[Path] = []
-					errors: list[str] = []
-					run_id = _new_pipeline_run_id()
-					run_dir = _pipeline_run_dir(project, selected_pipeline.name, run_id)
+				selected_paths: list[Path] = []
 
-					with st.spinner(f"Running {selected_pipeline.name} on {len(selected_paths)} file(s)..."):
-						for file_path in selected_paths:
-							try:
-								output_path = _run_pipeline_on_file(file_path, project, selected_pipeline, run_dir)
-							except Exception as exc:
-								errors.append(f"{file_path.name}: {exc}")
-							else:
-								successes.append(output_path)
+				if selection_mode == "Files":
+					run_files = st.multiselect(
+						"Files to run",
+						options=[path.name for path in project_files],
+						help="Choose one or more project files for this pipeline."
+					)
+					if run_files:
+						selected_paths = [path for path in project_files if path.name in set(run_files)]
 
-					if successes:
-						st.success(f"Processed {len(successes)} file(s).")
-						st.caption(f"Run output folder: {run_dir}")
-						for output in successes:
-							st.caption(str(output))
-						log_project_event(project.path, "pipeline_run_completed", {"pipeline": selected_pipeline.name, "run_id": run_id, "requested_files": len(selected_paths), "succeeded": len(successes), "failed": len(errors)})
-					if errors:
-						for error in errors:
-							st.error(error)
+				else:  # selection_mode == "Label(s)"
+					# Load available labels
+					all_labels = load_file_labels(project.path)
+					available_labels = sorted(set(lbl for lbls in all_labels.values() for lbl in lbls))
 
-			if delete_col.button("Delete selected"):
-				remaining = [item for item in pipelines if item.name != selected_pipeline.name]
-				_save_pipelines(project, remaining)
-				if remaining:
-					st.session_state["pending_selected_pipeline_name"] = remaining[0].name
-				else:
-					st.session_state["pending_selected_pipeline_name"] = "__clear__"
-				_close_pipeline_editor()
-				st.rerun()
-
-	with editor_col:
-		st.markdown("### Editor")
-		editor_mode = st.session_state.get("pipeline_editor_mode")
-		if editor_mode not in {"create", "edit"}:
-			st.caption("Choose New pipeline or Edit selected to open the right-side editor.")
-		else:
-			with st.container(border=True):
-				delete_request = st.session_state.pop("pipeline_editor_delete_request", None)
-				if isinstance(delete_request, int):
-					_delete_pipeline_step(delete_request)
-					st.rerun()
-
-				head_col1, head_col2 = st.columns([3, 2])
-				with head_col1:
-					pipeline_name = st.text_input("Pipeline name", key="pipeline_editor_name", placeholder="speech_cleanup")
-				with head_col2:
-					step_count = int(st.number_input("Number of steps", min_value=1, max_value=12, value=int(st.session_state.get("pipeline_editor_step_count", 1)), step=1, key="pipeline_editor_step_count"))
-
-				st.caption("Choose an action for each step, then configure options under it.")
-
-				steps: list[str] = []
-				step_options_by_index: dict[str, dict[str, object]] = {}
-
-				for order_index in range(step_count):
-					with st.container(border=True):
-						step_col, delete_col = st.columns([5, 1])
-						with step_col:
-							step = st.selectbox(f"Step {order_index + 1}", options=PIPELINE_STEP_ORDER, format_func=lambda action: f"{_pipeline_action_label(action)} ({action})", key=f"pipeline_editor_step_{order_index}")
-						with delete_col:
-							st.button("✕", key=f"pipeline_editor_delete_step_{order_index}", disabled=step_count <= 1, on_click=_request_delete_pipeline_step, args=(order_index,))
-						steps.append(step)
-						st.caption("Step options")
-						options = _render_step_options_editor(step, order_index, project, project_files)
-						if options:
-							step_options_by_index[str(order_index)] = options
-
-				save_col, cancel_col = st.columns(2)
-				if save_col.button("Save pipeline", type="primary"):
-					clean_name = pipeline_name.strip()
-					if not clean_name:
-						st.error("Pipeline name is required.")
+					if available_labels:
+						selected_labels = st.multiselect(
+							"Labels to run",
+							options=available_labels,
+							help="Choose one or more labels to run the pipeline on all files with those labels."
+						)
+						# Collect all files that have any of the selected labels
+						if selected_labels:
+							for label in selected_labels:
+								label_files = list_project_files(project.path, label=label)
+								selected_paths.extend(label_files)
+							# Remove duplicates while preserving order
+							seen = set()
+							selected_paths = [p for p in selected_paths if not (p in seen or seen.add(p))]
 					else:
-						existing_names = {item.name for item in pipelines}
-						original_name = str(st.session_state.get("pipeline_editor_original_name", ""))
-						if editor_mode == "create" and clean_name in existing_names:
-							st.error("A pipeline with this name already exists.")
-						elif editor_mode == "edit" and clean_name != original_name and clean_name in existing_names:
-							st.error("A pipeline with this name already exists.")
-						else:
-							updated = Pipeline(name=clean_name, steps=steps, step_options=step_options_by_index)
-							if editor_mode == "create":
-								pipelines.append(updated)
-							else:
-								pipelines = [updated if item.name == original_name else item for item in pipelines]
+						st.info("No labels found. Use the File Library tab to add labels to your files.")
 
-							_save_pipelines(project, pipelines)
-							st.session_state["pending_selected_pipeline_name"] = clean_name
-							_close_pipeline_editor()
-							st.rerun()
+				run_col, delete_col = st.columns(2)
+				if run_col.button("Run selected pipeline", type="primary"):
+					if not selected_paths:
+						st.error("Select at least one file or label.")
+					else:
+						successes: list[Path] = []
+						errors: list[str] = []
+						run_id = _new_pipeline_run_id()
+						run_dir = _pipeline_run_dir(project, selected_pipeline.name, run_id)
+						total_files = len(selected_paths)
+						progress_bar = st.progress(0.0, text=f"Preparing {selected_pipeline.name}...")
 
-				if cancel_col.button("Cancel"):
+						with st.spinner(f"Running {selected_pipeline.name} on {len(selected_paths)} file(s)..."):
+							for index, file_path in enumerate(selected_paths, start=1):
+								progress_bar.progress(index / total_files, text=f"{selected_pipeline.name}: {index}/{total_files} - {file_path.name}")
+								try:
+									output_path = _run_pipeline_on_file(file_path, project, selected_pipeline, run_dir)
+								except Exception as exc:
+									errors.append(f"{file_path.name}: {exc}")
+								else:
+									successes.append(output_path)
+						progress_bar.progress(1.0, text=f"Completed {selected_pipeline.name} run")
+
+						if successes:
+							st.success(f"Processed {len(successes)} file(s).")
+							st.caption(f"Run output folder: {run_dir}")
+							for output in successes:
+								st.caption(str(output))
+							log_project_event(project.path, "pipeline_run_completed", {"pipeline": selected_pipeline.name, "run_id": run_id, "requested_files": len(selected_paths), "succeeded": len(successes), "failed": len(errors)})
+						if errors:
+							for error in errors:
+								st.error(error)
+
+				if show_designer and delete_col.button("Delete selected"):
+					remaining = [item for item in pipelines if item.name != selected_pipeline.name]
+					_save_pipelines(project, remaining)
+					if remaining:
+						st.session_state["pending_selected_pipeline_name"] = remaining[0].name
+					else:
+						st.session_state["pending_selected_pipeline_name"] = "__clear__"
 					_close_pipeline_editor()
 					st.rerun()
+
+	if show_designer and editor_col is not None:
+		with editor_col:
+			st.markdown("### Editor")
+			editor_mode = st.session_state.get("pipeline_editor_mode")
+			if editor_mode not in {"create", "edit"}:
+				st.caption("Choose New pipeline or Edit selected to open the right-side editor.")
+			else:
+				with st.container(border=True):
+					delete_request = st.session_state.pop("pipeline_editor_delete_request", None)
+					if isinstance(delete_request, int):
+						_delete_pipeline_step(delete_request)
+						st.rerun()
+
+					head_col1, head_col2 = st.columns([3, 2])
+					with head_col1:
+						pipeline_name = st.text_input("Pipeline name", key="pipeline_editor_name", placeholder="speech_cleanup")
+					with head_col2:
+						step_count = int(st.number_input("Number of steps", min_value=1, max_value=12, value=int(st.session_state.get("pipeline_editor_step_count", 1)), step=1, key="pipeline_editor_step_count"))
+
+					st.caption("Choose an action for each step, then configure options under it.")
+
+					steps: list[str] = []
+					step_options_by_index: dict[str, dict[str, object]] = {}
+
+					for order_index in range(step_count):
+						with st.container(border=True):
+							step_col, delete_col = st.columns([5, 1])
+							with step_col:
+								step = st.selectbox(f"Step {order_index + 1}", options=PIPELINE_STEP_ORDER, format_func=lambda action: f"{_pipeline_action_label(action)} ({action})", key=f"pipeline_editor_step_{order_index}")
+							with delete_col:
+								st.button("✕", key=f"pipeline_editor_delete_step_{order_index}", disabled=step_count <= 1, on_click=_request_delete_pipeline_step, args=(order_index,))
+							steps.append(step)
+							st.caption("Step options")
+							options = _render_step_options_editor(step, order_index, project, project_files)
+							if options:
+								step_options_by_index[str(order_index)] = options
+
+					save_col, cancel_col = st.columns(2)
+					if save_col.button("Save pipeline", type="primary"):
+						clean_name = pipeline_name.strip()
+						if not clean_name:
+							st.error("Pipeline name is required.")
+						else:
+							existing_names = {item.name for item in pipelines}
+							original_name = str(st.session_state.get("pipeline_editor_original_name", ""))
+							if editor_mode == "create" and clean_name in existing_names:
+								st.error("A pipeline with this name already exists.")
+							elif editor_mode == "edit" and clean_name != original_name and clean_name in existing_names:
+								st.error("A pipeline with this name already exists.")
+							else:
+								updated = Pipeline(name=clean_name, steps=steps, step_options=step_options_by_index)
+								if editor_mode == "create":
+									pipelines.append(updated)
+								else:
+									pipelines = [updated if item.name == original_name else item for item in pipelines]
+
+								_save_pipelines(project, pipelines)
+								st.session_state["pending_selected_pipeline_name"] = clean_name
+								_close_pipeline_editor()
+								st.rerun()
+
+					if cancel_col.button("Cancel"):
+						_close_pipeline_editor()
+						st.rerun()
