@@ -182,6 +182,8 @@ data/derived/pipelines/<pipeline_key>/run_<timestamp>_<id>/
 
 For each processed input file, every step emits a step artifact (`.wav`) and a sidecar provenance JSON (`.wav.json`).
 
+The Run Pipelines tab shows a live progress bar while files are being processed.
+
 ### Matrix CSV Storage
 
 Matrix CSVs generated in the GUI are saved under:
@@ -195,6 +197,8 @@ In **Pipeline Matrix → Run Matrix**, you can choose a source mode:
 - **Saved**: browse and select matrix CSVs already stored for the selected pipeline
 - **Upload**: upload a CSV from your local machine
 - **Path**: provide an absolute or project-relative CSV path
+
+The Matrix Run panel also shows a live row-by-row progress bar while rows are executed, and it can optionally collect only final outputs into `final_by_params/set_####_*` folders for each parameter combination.
 
 ### Add Noise Step
 
