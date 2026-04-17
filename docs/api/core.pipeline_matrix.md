@@ -32,6 +32,8 @@ Generate a CSV matrix from files and parameter combinations.
 - `parameter_specs`: List of parameter specs (e.g., `["0.target_peak=0.5,0.8"]`)
 - `files`: List of input file paths (relative to `data/raw/` or absolute). If None, all files in `data/raw/` are used.
 
+In the GUI workflow, matrix CSVs are typically stored under `metadata/matrices/<pipeline_name>/` so they can be browsed per pipeline in the Run Matrix panel.
+
 **Returns:** Number of rows written to CSV.
 
 **Example:**
@@ -97,6 +99,14 @@ The matrix CSV has this structure:
 - Empty cells are treated as "no override"
 
 You can manually edit or filter rows before running.
+
+## GUI Matrix Sources
+
+When running a matrix from the GUI, Triton supports three matrix CSV sources:
+
+- **Saved**: select from `metadata/matrices/<pipeline_name>/`
+- **Upload**: upload a CSV file in-session
+- **Path**: point to an absolute or project-relative CSV file
 
 ## Design Notes
 
