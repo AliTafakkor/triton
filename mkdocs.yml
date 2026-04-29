@@ -9,13 +9,15 @@ theme:
   logo: assets/logo.svg
   palette:
     - scheme: slate
-      primary: teal
-      accent: cyan
+      primary: '#4a9873'
+      accent: '#479bbe'
   features:
     - navigation.tabs
     - navigation.sections
     - navigation.top
     - content.code.copy
+  extra_css:
+    - assets/brandkit.css
 
 nav:
   - Home: index.md
