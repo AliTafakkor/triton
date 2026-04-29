@@ -1,0 +1,59 @@
+/* Brandkit colors and basic theme overrides for MkDocs Material */
+:root{
+  --ocean: #020c1c;
+  --scale: #4a9873;
+  --scale-lt: #71b37d;
+  --scale-dk: #2f7869;
+  --trident: #479bbe;
+  --wave: #b8d1dc;
+  --shell: #81668e;
+  --bg: #060f1a;
+  --surface: #0a1a2e;
+}
+
+/* Page background and primary text */
+body {
+  background-color: var(--bg) !important;
+  color: #dff2ec !important;
+}
+
+/* Header, nav, and footer surfaces */
+.md-header,
+.md-top-nav,
+.md-side-nav,
+.md-nav,
+.md-footer {
+  background-color: var(--surface) !important;
+  color: #dff2ec !important;
+}
+
+/* Links and primary accents */
+a,
+.md-nav__link,
+.md-button {
+  color: var(--trident) !important;
+}
+
+/* Primary actions */
+.md-button.md-button--primary,
+.md-button--primary {
+  background-color: var(--scale) !important;
+  color: white !important;
+  border-color: transparent !important;
+}
+
+/* Active nav item */
+.md-nav__link--active {
+  color: var(--scale-lt) !important;
+}
+
+/* Code block backgrounds */
+.md-typeset pre,
+.md-typeset code {
+  background-color: rgba(10,26,46,0.6) !important;
+}
+
+/* Make the logo area use brand color for accent */
+.md-logo {
+  color: var(--scale-lt) !important;
+}
