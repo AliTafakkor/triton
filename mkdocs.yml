@@ -6,7 +6,8 @@ repo_name: "triton"
 
 theme:
   name: material
-  logo: assets/logo.svg
+  logo: assets/logo.png
+  favicon: assets/favicon.png
   palette:
     - scheme: slate
       primary: '#4a9873'
