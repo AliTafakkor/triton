@@ -62,7 +62,7 @@ def compute_spectrogram(audio: np.ndarray, sr: int, settings: dict[str, object])
 	cfg = normalize_spectrogram_settings(settings)
 	mono = np.asarray(audio, dtype=np.float32)
 	if mono.ndim > 1:
-		mono = np.mean(mono, axis=1, dtype=np.float32)
+		mono = np.mean(mono, axis=0, dtype=np.float32)
 
 	kind = str(cfg["type"])
 	if kind == "stft":
