@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import re
-from urllib.parse import urlparse
+from urllib.parse import urlparse, unquote
 
 import feedparser
 import requests
@@ -105,7 +105,7 @@ def _select_audio_url(item) -> str | None:
 
 def _filename_from_url_or_title(url: str, title: str) -> str:
 	path = urlparse(url).path
-	name = Path(path).name
+	name = unquote(Path(path).name)
 	if name:
 		ext = Path(name).suffix.lower()
 		if ext in AUDIO_EXTS:
@@ -123,9 +123,15 @@ def _slugify(text: str) -> str:
 
 
 def _download_file(url: str, output_path: Path) -> None:
-	with requests.get(url, stream=True, timeout=60) as response:
-		response.raise_for_status()
-		with open(output_path, "wb") as handle:
-			for chunk in response.iter_content(chunk_size=1024 * 1024):
-				if chunk:
-					handle.write(chunk)
+	tmp_path = output_path.with_suffix(output_path.suffix + ".tmp")
+	try:
+		with requests.get(url, stream=True, timeout=60) as response:
+			response.raise_for_status()
+			with open(tmp_path, "wb") as handle:
+				for chunk in response.iter_content(chunk_size=1024 * 1024):
+					if chunk:
+						handle.write(chunk)
+		tmp_path.replace(output_path)
+	except Exception:
+		tmp_path.unlink(missing_ok=True)
+		raise
