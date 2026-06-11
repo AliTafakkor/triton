@@ -621,6 +621,14 @@ def rename_project_file(file_path: Path, new_name: str) -> Path:
 		if raw_candidate.is_file() and raw_candidate.suffix.lower() in SUPPORTED_AUDIO_SUFFIXES:
 			raw_candidate.rename(raw_candidate.with_name(new_stem + raw_candidate.suffix))
 
+	# Rename spectrogram companions sitting next to the renamed file
+	old_prefix = file_path.name
+	new_prefix = renamed.name
+	for companion_suffix in (".spectrogram.npz", ".spectrogram.npz.json"):
+		old_companion = renamed.parent / (old_prefix + companion_suffix)
+		if old_companion.exists():
+			old_companion.rename(renamed.parent / (new_prefix + companion_suffix))
+
 	# Migrate label key from old stem to new stem
 	all_labels = load_file_labels(project_dir)
 	if file_path.stem in all_labels:
