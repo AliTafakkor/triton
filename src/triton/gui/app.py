@@ -11,6 +11,7 @@ from triton.gui.project_views import _hero, _render_project_launcher, _render_ma
 from triton.gui.tabs.file_library import _render_file_library as _render_file_library_tab
 from triton.gui.tabs.pipelines import _render_pipelines_tab as _render_pipelines_tab_module
 from triton.gui.tabs.rss import _render_rss_ingest_tab as _render_rss_ingest_tab_module
+from triton.gui.tabs.classify import render_classify_tab as _render_classify_tab_module
 
 import librosa
 import numpy as np
@@ -784,7 +785,7 @@ def _render_project_workspace(project: Project) -> None:
 			_clear_active_project()
 			st.rerun()
 
-	import_tab, ingest_tab, pipelines_tab, mix_tab, babble_tab, transcribe_tab, roadmap_tab = st.tabs(["Manage and Explore Files", "Ingest RSS", "Pipelines", "Mix", "Babble", "Transcribe", "Roadmap"])
+	import_tab, ingest_tab, pipelines_tab, mix_tab, babble_tab, transcribe_tab, classify_tab, roadmap_tab = st.tabs(["Manage and Explore Files", "Ingest RSS", "Pipelines", "Mix", "Babble", "Transcribe", "Classify", "Roadmap"])
 
 	with import_tab:
 		metric_col1, metric_col2, metric_col3 = st.columns(3)
@@ -1243,6 +1244,9 @@ def _render_project_workspace(project: Project) -> None:
 						)
 					except Exception as exc:
 						st.error(f"Transcription failed: {exc}")
+
+	with classify_tab:
+		_render_classify_tab_module(project, project_files)
 
 	with roadmap_tab:
 		st.markdown("### Next GUI milestones")
