@@ -38,7 +38,7 @@ pytest = ">=9.0.2,<10"
 openai-whisper = "*"
 
 [feature.classify.dependencies]
-transformers = ">=4.40,<5"
+transformers = ">=4.40,<4.52"
 
 [feature.docs.dependencies]
 mkdocs = ">=1.6.1,<2"

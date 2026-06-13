@@ -24,6 +24,16 @@ class ClassificationResult:
 
 def load_model():
     """Load the AST feature extractor and model. Call once and cache the result."""
+    import torch
+
+    # transformers.integrations.flex_attention applies @torch.compiler.disable as a
+    # class decorator at import time. That decorator unconditionally runs
+    # `import torch._dynamo`, which in turn probes `triton.language` and
+    # `triton.backends` — hitting this package (also named 'triton') instead of the
+    # CUDA triton package. Replacing the decorator with a no-op before transformers
+    # is imported prevents the entire _dynamo import chain from firing.
+    torch.compiler.disable = lambda fn=None, **_: (fn if fn is not None else lambda f: f)
+
     from transformers import AutoFeatureExtractor, AutoModelForAudioClassification
     extractor = AutoFeatureExtractor.from_pretrained(MODEL_ID)
     model = AutoModelForAudioClassification.from_pretrained(MODEL_ID)
