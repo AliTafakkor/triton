@@ -102,7 +102,7 @@ def load_audio(path: Path, sr: int | None = None, mono: bool = True) -> tuple[np
 	Returns:
 		(audio, sample_rate) tuple.
 	"""
-	audio, sample_rate = librosa.load(path, sr=sr, mono=mono)
+	audio, sample_rate = librosa.load(str(path), sr=sr, mono=mono)
 	return audio, sample_rate
 
 
