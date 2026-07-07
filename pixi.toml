@@ -37,12 +37,15 @@ pytest = ">=9.0.2,<10"
 [feature.transcribe.dependencies]
 openai-whisper = "*"
 
+[feature.classify.dependencies]
+transformers = ">=4.40,<4.52"
+
 [feature.docs.dependencies]
 mkdocs = ">=1.6.1,<2"
 mkdocs-material = ">=9.6.7,<10"
 
 [environments]
-default = { features = ["dev", "docs", "transcribe"] }
+default = { features = ["dev", "docs", "transcribe", "classify"] }
 transcribe = { features = ["dev", "docs", "transcribe"] }
 
 [pypi-dependencies]
