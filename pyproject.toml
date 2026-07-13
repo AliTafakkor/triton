@@ -1,20 +1,65 @@
 [build-system]
-requires = ["setuptools>=45", "wheel"]
+requires = ["setuptools>=70", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "triton"
+# NOTE: name is pending confirmation from Ali — placeholder is "triton-audio"
+# to avoid collision with the NVIDIA CUDA "triton" package on PyPI.
+name = "triton-audio"
 version = "0.1.0"
-description = "Speech-in-noise toolkit for the CONCH Lab"
+description = "Speech-in-noise audio toolkit for auditory neuroscience research"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
-    {name = "Ali Tafakkor", email = "alitafakkor@gmail.com"}
+    { name = "Ali Tafakkor", email = "alitafakkor@gmail.com" },
 ]
 requires-python = ">=3.12"
+keywords = ["speech", "audio", "neuroscience", "signal-processing", "speech-in-noise"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+]
 
-[tool.setuptools]
-packages = ["triton"]
-package-dir = {"" = "src"}
-include-package-data = true
+# Core dependencies — everything needed to run the GUI and CLI.
+# Note: ffmpeg must be installed separately as a system binary (not available via pip).
+dependencies = [
+    "librosa>=0.11.0,<0.12",
+    "numpy>=2.0,<3",
+    "scipy>=1.15,<2",
+    "typer>=0.23,<0.24",
+    "streamlit>=1.54,<2",
+    "pydantic>=2.12,<3",
+    "feedparser>=6.0,<7",
+    "requests>=2.32,<3",
+    "plotly>=6.0,<7",
+    "soundfile",
+    "praat-parselmouth>=0.4.7,<0.5",
+]
+
+[project.optional-dependencies]
+transcribe = [
+    "openai-whisper",
+]
+classify = [
+    "torch",
+    "transformers>=4.40,<4.52",
+]
+all = [
+    "triton-audio[transcribe,classify]",
+]
+
+[project.scripts]
+triton = "triton.cli.main:app"
+
+[project.urls]
+Repository = "https://github.com/AliTafakkor/triton"
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.setuptools.package-data]
 triton = ["gui/assets/*.css"]
