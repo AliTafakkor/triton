@@ -3,9 +3,7 @@ requires = ["setuptools>=70", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-# NOTE: name is pending confirmation from Ali — placeholder is "triton-audio"
-# to avoid collision with the NVIDIA CUDA "triton" package on PyPI.
-name = "triton-audio"
+name = "conch-triton"
 version = "0.1.0"
 description = "Speech-in-noise audio toolkit for auditory neuroscience research"
 readme = "README.md"
@@ -49,7 +47,7 @@ classify = [
     "transformers>=4.40,<4.52",
 ]
 all = [
-    "triton-audio[transcribe,classify]",
+    "conch-triton[transcribe,classify]",
 ]
 
 [project.scripts]
