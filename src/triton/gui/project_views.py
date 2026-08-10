@@ -223,25 +223,26 @@ def _render_matrix_tab(
                 key="matrix_file_selection_mode"
             )
 
-            selected_files_from_picker = st.multiselect(
-                "Select files for matrix",
-                options=[p.name for p in project_files],
-                default=[p.name for p in project_files[:2]] if project_files else [],
-                key="matrix_gen_files",
-                help="Used when selection mode is Files.",
-            )
-
-            # Always render label picker so options are visible immediately even inside forms.
             all_labels = load_file_labels(project.path)
             available_labels = sorted(set(lbl for lbls in all_labels.values() for lbl in lbls))
-            selected_labels = st.multiselect(
-                "Select labels for matrix",
-                options=available_labels,
-                key="matrix_gen_labels",
-                help="Used when selection mode is Label(s).",
-            )
-            if not available_labels:
-                st.info("No labels found. Use the File Library tab to add labels to your files.")
+
+            if file_selection_mode == "Files":
+                selected_files_from_picker = st.multiselect(
+                    "Select files for matrix",
+                    options=[p.name for p in project_files],
+                    default=[p.name for p in project_files[:2]] if project_files else [],
+                    key="matrix_gen_files",
+                )
+                selected_labels = []
+            else:
+                selected_files_from_picker = []
+                selected_labels = st.multiselect(
+                    "Select labels for matrix",
+                    options=available_labels,
+                    key="matrix_gen_labels",
+                )
+                if not available_labels:
+                    st.info("No labels found. Use the File Library tab to add labels to your files.")
 
             selected_files: list[str] = []
             if file_selection_mode == "Files":
