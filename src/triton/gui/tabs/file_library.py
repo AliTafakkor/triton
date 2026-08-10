@@ -8,6 +8,7 @@ import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
+import soundfile as sf
 from triton.core.project import Project, load_file_labels, project_normalized_dir, set_file_labels
 from triton.core.spectrogram import load_spectrogram
 from triton.gui.shared import (
@@ -273,10 +274,19 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 			st.markdown("### Spectrogram")
 			selected_path = next((path for path in project_files if str(path) == str(selected_spectrogram)), None)
 			if selected_path is None:
-				st.caption("Click Spec on a file to open its spectrogram here.")
+				st.caption("Click 📊 on a file to open its spectrogram and player here.")
 			else:
 				spec_path = _spectrogram_path(selected_path)
 				st.caption(selected_path.name)
+				try:
+					audio_data, sr = sf.read(str(selected_path))
+					import io
+					buf = io.BytesIO()
+					sf.write(buf, audio_data, sr, format="WAV")
+					buf.seek(0)
+					st.audio(buf, format="audio/wav")
+				except Exception:
+					pass
 				if not spec_path.exists():
 					st.warning("No spectrogram found for this file. Click Spec again to generate it.")
 				else:

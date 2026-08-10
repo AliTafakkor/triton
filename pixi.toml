@@ -51,6 +51,6 @@ transcribe = { features = ["dev", "docs", "transcribe"] }
 [pypi-dependencies]
 soundfile = "*"
 torch = "*"
-triton = { path = ".", editable = true }
+conch-triton = { path = ".", editable = true }
 praat-parselmouth = ">=0.4.7, <0.5"
 
