@@ -227,33 +227,32 @@ def _render_matrix_tab(
             available_labels = sorted(set(lbl for lbls in all_labels.values() for lbl in lbls))
 
             if file_selection_mode == "Files":
-                selected_files_from_picker = st.multiselect(
+                selected_files = st.multiselect(
                     "Select files for matrix",
                     options=[p.name for p in project_files],
                     default=[p.name for p in project_files[:2]] if project_files else [],
                     key="matrix_gen_files",
                 )
-                selected_labels = []
             else:
-                selected_files_from_picker = []
-                selected_labels = st.multiselect(
-                    "Select labels for matrix",
-                    options=available_labels,
-                    key="matrix_gen_labels",
-                )
                 if not available_labels:
                     st.info("No labels found. Use the File Library tab to add labels to your files.")
-
-            selected_files: list[str] = []
-            if file_selection_mode == "Files":
-                selected_files = list(selected_files_from_picker)
-            else:
-                for label in selected_labels:
-                    label_files = list_project_files(project.path, label=label)
-                    selected_files.extend([p.name for p in label_files])
-                # Remove duplicates while preserving order.
-                seen: set[str] = set()
-                selected_files = [name for name in selected_files if not (name in seen or seen.add(name))]
+                    selected_files = []
+                else:
+                    selected_label = st.selectbox(
+                        "Filter by label",
+                        options=available_labels,
+                        key="matrix_gen_label",
+                    )
+                    # Find all files matching the chosen label
+                    label_matched = [p.name for p in list_project_files(project.path, label=selected_label)]
+                    selected_files = st.multiselect(
+                        f"Files with label '{selected_label}'",
+                        options=label_matched,
+                        default=label_matched,
+                        key="matrix_gen_files_from_label",
+                    )
+                    if not label_matched:
+                        st.caption("No files have this label yet.")
 
             default_csv_name = f"{selected_pipeline}.matrix.csv"
             output_csv_name = st.text_input(
