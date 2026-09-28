@@ -12,6 +12,7 @@ from triton.gui.tabs.file_library import _render_file_library as _render_file_li
 from triton.gui.tabs.pipelines import _render_pipelines_tab as _render_pipelines_tab_module
 from triton.gui.tabs.rss import _render_rss_ingest_tab as _render_rss_ingest_tab_module
 from triton.gui.tabs.classify import render_classify_tab as _render_classify_tab_module
+from triton.gui.tabs.features import render_features_tab as _render_features_tab_module
 
 import librosa
 import numpy as np
@@ -781,7 +782,7 @@ def _render_project_workspace(project: Project) -> None:
 			_clear_active_project()
 			st.rerun()
 
-	import_tab, ingest_tab, pipelines_tab, mix_tab, babble_tab, transcribe_tab, classify_tab, roadmap_tab = st.tabs(["Manage and Explore Files", "Ingest RSS", "Pipelines", "Mix", "Babble", "Transcribe", "Classify", "Roadmap"])
+	import_tab, ingest_tab, pipelines_tab, mix_tab, babble_tab, transcribe_tab, classify_tab, features_tab, roadmap_tab = st.tabs(["Manage and Explore Files", "Ingest RSS", "Pipelines", "Mix", "Babble", "Transcribe", "Classify", "Features", "Roadmap"])
 
 	with import_tab:
 		metric_col1, metric_col2, metric_col3 = st.columns(3)
@@ -829,7 +830,7 @@ def _render_project_workspace(project: Project) -> None:
 					)
 
 				with col3:
-					if st.button("Rename", key="apply_rename_label", use_container_width=True, type="primary"):
+					if st.button("Rename", key="apply_rename_label", width="stretch", type="primary"):
 						if new_label.strip() and new_label.strip() != old_label:
 							files_to_update = [
 								file_path for file_path in project_files
@@ -871,7 +872,7 @@ def _render_project_workspace(project: Project) -> None:
 							f"Apply to {len(unlabeled_files)} file(s)",
 							key="apply_bulk_unlabeled_label",
 							type="primary",
-							use_container_width=True,
+							width="stretch",
 						):
 							if bulk_label.strip():
 								for file_path in unlabeled_files:
@@ -1227,7 +1228,7 @@ def _render_project_workspace(project: Project) -> None:
 								}
 								for seg in result.segments
 							]
-							st.dataframe(segment_data, use_container_width=True)
+							st.dataframe(segment_data, width="stretch")
 
 						log_project_event(
 							project.path,
@@ -1243,6 +1244,9 @@ def _render_project_workspace(project: Project) -> None:
 
 	with classify_tab:
 		_render_classify_tab_module(project, project_files)
+
+	with features_tab:
+		_render_features_tab_module(project, project_files)
 
 	with roadmap_tab:
 		st.markdown("### Next GUI milestones")
