@@ -4,7 +4,7 @@ Triton includes a Streamlit GUI for project-oriented workflows.
 
 ## Run
 
-- `pixi run gui`
+- `triton gui` (pip install) or `pixi run gui` (from a clone)
 - UI theme is forced to dark mode via project Streamlit config (`.streamlit/config.toml`).
 
 ## Developer Layout
@@ -16,6 +16,8 @@ The GUI is now split by responsibility so `app.py` stays focused on page-level o
 - `triton.gui.tabs.file_library`: Manage and Explore Files tab UI
 - `triton.gui.tabs.pipelines`: Pipelines tab UI and controls
 - `triton.gui.tabs.rss`: RSS ingest tab UI
+- `triton.gui.tabs.classify`: Classify tab UI
+- `triton.gui.tabs.features`: Features tab UI
 - `triton.gui.assets.app.css`: GUI stylesheet loaded at app startup
 
 When adding a new tab, place tab-specific rendering logic in `triton.gui.tabs.<name>` and keep cross-tab helpers in `triton.gui.shared`.
@@ -59,6 +61,18 @@ The Manage and Explore Files tab is the default project workspace entry point fo
 - open a precomputed spectrogram per file in the right-side spectrogram panel (spectrogram is generated from the normalized file)
 
 After importing, the file browser selection and upload widget are automatically reset to allow for a clean next import.
+
+### Example Files
+
+The **No audio handy? Add example files** expander (open automatically on an empty project)
+downloads the HARVARD speech-in-noise corpus once to `~/.cache/triton/examples`, verifies
+each file's SHA-256, and imports the four files into the project:
+
+- `Harvard_speech100.wav`, labeled `harvard-speech`
+- speech-shaped, speech-modulated and white noise, labeled `harvard-noise`
+
+Files already in the project are skipped. See [CLI → examples](cli/examples.md) for source
+and license (CC BY-NC 4.0).
 
 ### Label Files
 
@@ -253,3 +267,69 @@ Fetch and download podcast episodes directly into a project from an RSS feed.
 - preview matching episodes before downloading
 - download episodes; each file is normalized to the project spec and a spectrogram is generated
 - downloaded episodes land in `data/raw/` first, then normalized copies are written to `data/normalized/`
+
+## Transcribe Tab
+
+Speech-to-text with OpenAI Whisper, run locally.
+
+- pick a file and a model size (`tiny` → `large`; larger is more accurate and slower)
+- optionally set the language code, or leave blank for auto-detect
+- shows the full transcript and a table of timed segments
+
+Requires the `transcribe` extra.
+
+## Classify Tab
+
+Tags what a recording contains using the
+[Audio Spectrogram Transformer](https://huggingface.co/MIT/ast-finetuned-audioset-10-10-0.4593),
+trained on AudioSet's 527 sound classes (speech, music, vehicles, birds, …).
+
+- select one or more files and how many top labels to show
+- results table with a confidence per label
+- **Add top label to project** appends the best label to the file's existing labels, so labels
+  such as `bab-f1` are kept and the new label can be used for filtering
+
+AST reads roughly the first 10 seconds of each file. Requires the `classify` extra.
+
+## Features Tab
+
+Extracts time-aligned features for relating audio to brain recordings (EEG/MEG), in the spirit
+of Kell et al. (2018) and Gwilliams et al.
+
+| Feature | Saved arrays | Rate |
+|---|---|---|
+| Amplitude envelope | `times`, `envelope` | configurable (default 100 Hz) |
+| Word onsets | `words`, `onsets`, `offsets`, `times`, `onset_train` | same grid as the envelope |
+| Neural network layers | `times`, `hidden_states` (layers × frames × 768), `layers` | 50 Hz |
+
+- **Envelope**: magnitude of the analytic signal, `|hilbert(x)|`, low-passed (default 30 Hz)
+  and resampled. This differs from `core.signal.extract_envelope(method="hilbert")`, which
+  rectifies first and leaks energy before sound onsets.
+- **Word onsets**: from Whisper word-level timestamps. `onset_train` has a 1 at each word
+  onset and exactly the same length as the envelope, so the two can be stacked directly.
+- **Neural layers**: hidden states from Wav2Vec2, HuBERT or WavLM (base models, 12
+  transformer layers). Layer 0 is the input to the first transformer layer. Long files are
+  processed in 20 s chunks to bound memory.
+
+Output layout (each `.npz` also embeds its settings as `meta_json`):
+
+```text
+data/derived/features/<file stem>/
+  <stem>.envelope.npz        + .npz.json sidecar
+  <stem>.word_onsets.npz     + .npz.json sidecar
+  <stem>.<model>.npz         + .npz.json sidecar
+```
+
+Features move with their audio file on rename and are removed on delete. The preview shows the
+envelope with word markers and, on request, a z-scored layer-by-time activity heatmap.
+
+Loading a file in Python:
+
+```python
+import numpy as np
+data = np.load("data/derived/features/talker1/talker1.wav2vec2.npz")
+data["hidden_states"].shape   # (13, n_frames, 768)
+data["times"]                 # frame centres in seconds
+```
+
+Word onsets and neural layers require the `features` extra.
