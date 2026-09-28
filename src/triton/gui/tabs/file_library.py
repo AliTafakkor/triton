@@ -15,6 +15,7 @@ from triton.gui.shared import (
 	_delete_project_file,
 	_format_file_size,
 	_generate_file_spectrogram,
+	_import_example_files,
 	_pipeline_key,
 	_save_uploaded_project_files,
 	_spectrogram_path,
@@ -88,6 +89,26 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 			""",
 			unsafe_allow_html=True,
 		)
+
+	with st.expander("No audio handy? Add example files", expanded=not project_files):
+		from triton.examples import CITATION, EXAMPLES, LICENSE
+
+		st.write(
+			"Adds the HARVARD speech-in-noise corpus: 100 recorded sentences plus white, "
+			"speech-shaped and speech-modulated noise (4 files, ~100 MB, downloaded once and "
+			"checksum-verified). Labeled `harvard-speech` / `harvard-noise`."
+		)
+		st.caption(f"{CITATION}. License: {LICENSE}.")
+		if st.button("Add example files", key="import_example_files"):
+			try:
+				imported = _import_example_files(project)
+			except Exception as exc:
+				st.error(f"Could not get example files: {exc}")
+			else:
+				st.success(f"Added {len(imported)} example file(s)." if imported else "Example files are already in this project.")
+				if imported:
+					st.rerun()
+		st.caption(", ".join(example.name for example in EXAMPLES))
 
 	if not project_files:
 		st.info("No files have been imported to this project yet.")

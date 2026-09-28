@@ -35,6 +35,7 @@ nav:
       - convert: cli/convert.md
       - normalize: cli/normalize.md
       - matrix: cli/matrix.md
+      - examples: cli/examples.md
   - API:
       - core.mixer: api/core.mixer.md
       - core.signal: api/core.signal.md

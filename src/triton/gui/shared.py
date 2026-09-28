@@ -37,6 +37,8 @@ from triton.core.project import (
 	register_recent_project,
 	save_project_pipelines,
 	normalize_project_file,
+	project_normalized_dir,
+	set_file_label,
 	set_project_file_labels,
 )
 from triton.core.spectrogram import compute_spectrogram, save_spectrogram
@@ -213,6 +215,36 @@ def _save_uploaded_project_files(
 	if saved_paths:
 		log_project_event(project.path, "files_imported_batch", {"count": len(saved_paths), "files": [path.name for path in saved_paths]})
 
+	return saved_paths
+
+
+def _import_example_files(project: Project) -> list[Path]:
+	"""Download the verified HARVARD example files and import any not yet in the project.
+
+	The speech file is labeled ``harvard-speech`` and the noises ``harvard-noise``
+	so they can be picked by label in Mix, Babble and the pipeline matrix.
+	"""
+	from triton.examples import download_examples
+
+	norm_dir = project_normalized_dir(project.path)
+	saved_paths: list[Path] = []
+	with st.status("Getting example files (HARVARD corpus, ~100 MB)...", expanded=True) as status:
+		paths = download_examples(on_progress=lambda example, state: status.write(f"{example.name}: {state}"))
+		for path in paths:
+			if any(norm_dir.glob(f"{path.stem}.*")):
+				status.write(f"{path.name}: already in project, skipped")
+				continue
+			status.write(f"Importing {path.name}")
+			raw_path = add_project_file(project.path, path.name, path.read_bytes())
+			norm_path = normalize_project_file(project.path, raw_path, project)
+			_generate_file_spectrogram(norm_path, project)
+			label = "harvard-speech" if "speech" in path.stem.lower() else "harvard-noise"
+			set_file_label(project.path, norm_path, label)
+			saved_paths.append(norm_path)
+		status.update(label=f"Imported {len(saved_paths)} example file(s)", state="complete")
+
+	if saved_paths:
+		log_project_event(project.path, "example_files_imported", {"files": [path.name for path in saved_paths]})
 	return saved_paths
 
 
