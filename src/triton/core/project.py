@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import json
 import re
+import shutil
 import tomllib
 from pathlib import Path
 from typing import Literal
@@ -164,6 +165,11 @@ def project_normalized_dir(project_dir: Path) -> Path:
 
 def project_derived_dir(project_dir: Path) -> Path:
 	return project_dir / "data" / "derived"
+
+
+def project_features_dir(project_dir: Path) -> Path:
+	"""Extracted features live in one subfolder per audio file stem."""
+	return project_derived_dir(project_dir) / "features"
 
 
 def project_log_path(project_dir: Path) -> Path:
@@ -551,6 +557,8 @@ def delete_project_file(file_path: Path) -> None:
 			if norm_candidate.is_file() and norm_candidate.suffix.lower() in SUPPORTED_AUDIO_SUFFIXES:
 				_delete_audio_with_companions(norm_candidate)
 
+	shutil.rmtree(project_features_dir(project_dir) / file_path.stem, ignore_errors=True)
+
 	log_project_event(project_dir, "file_deleted", {"name": file_name, "path": str(file_path.resolve())})
 
 
@@ -628,6 +636,14 @@ def rename_project_file(file_path: Path, new_name: str) -> Path:
 		old_companion = renamed.parent / (old_prefix + companion_suffix)
 		if old_companion.exists():
 			old_companion.rename(renamed.parent / (new_prefix + companion_suffix))
+
+	# Move extracted features to the new stem
+	old_features = project_features_dir(project_dir) / file_path.stem
+	if old_features.is_dir() and new_stem != file_path.stem:
+		new_features = old_features.with_name(new_stem)
+		old_features.rename(new_features)
+		for feature_file in new_features.glob(f"{file_path.stem}.*"):
+			feature_file.rename(feature_file.with_name(new_stem + feature_file.name[len(file_path.stem):]))
 
 	# Migrate label key from old stem to new stem
 	all_labels = load_file_labels(project_dir)

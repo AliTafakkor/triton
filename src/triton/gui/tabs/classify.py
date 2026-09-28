@@ -93,7 +93,7 @@ def render_classify_tab(project: Project, project_files: list[Path]) -> None:
                     {"Label": label, "Confidence": f"{score:.1%}"}
                     for label, score in zip(result.labels, result.scores)
                 ]
-                st.dataframe(rows, use_container_width=True, hide_index=True)
+                st.dataframe(rows, width="stretch", hide_index=True)
                 if save_labels:
                     st.caption(f"Saved label: **{result.labels[0]}**")
 
@@ -116,4 +116,4 @@ def _render_existing_labels(project: Project, project_files: list[Path]) -> None
         if labels:
             rows.append({"File": file_path.name, "Labels": ", ".join(labels)})
     if rows:
-        st.dataframe(rows, use_container_width=True, hide_index=True)
+        st.dataframe(rows, width="stretch", hide_index=True)

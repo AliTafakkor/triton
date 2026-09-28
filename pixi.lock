@@ -3863,7 +3863,7 @@ packages:
 - pypi: ./
   name: conch-triton
   version: 0.1.0
-  sha256: d13bce4756d8ddb94498a05e901cb8862d6828398935d1a09a5691dc56c06be6
+  sha256: d6be3eff46f752b1e684c16526b84ed4cd42e34a75d476e7d221d976a3027e4d
   requires_dist:
   - librosa>=0.11.0,<0.12
   - numpy>=2.0,<3
@@ -3879,7 +3879,10 @@ packages:
   - openai-whisper ; extra == 'transcribe'
   - torch ; extra == 'classify'
   - transformers>=4.40,<4.52 ; extra == 'classify'
-  - conch-triton[transcribe,classify] ; extra == 'all'
+  - torch ; extra == 'features'
+  - transformers>=4.40,<4.52 ; extra == 'features'
+  - openai-whisper ; extra == 'features'
+  - conch-triton[transcribe,classify,features] ; extra == 'all'
   requires_python: '>=3.12'
 - conda: https://conda.anaconda.org/conda-forge/linux-64/contourpy-1.3.3-py312h0a2e395_4.conda
   sha256: 62447faf7e8eb691e407688c0b4b7c230de40d5ecf95bf301111b4d05c5be473
