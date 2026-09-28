@@ -1,6 +1,5 @@
 from pathlib import Path
 from typing import Callable
-import csv
 import streamlit as st
 from triton.core.project import Project, load_file_labels, list_project_files
 from triton.core.pipeline_runtime import PIPELINE_ACTIONS, default_step_options

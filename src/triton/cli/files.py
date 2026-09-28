@@ -11,7 +11,6 @@ from triton.core.project import (
 	load_project_config,
 	list_project_files,
 	set_file_label,
-	get_file_label,
 	load_file_labels,
 	project_normalized_dir,
 )
@@ -35,7 +34,7 @@ def label_file(
 	project_dir = project_dir.expanduser().resolve()
 
 	try:
-		project = load_project_config(project_dir)
+		load_project_config(project_dir)
 	except FileNotFoundError as exc:
 		raise typer.BadParameter(f"Project not found: {project_dir}") from exc
 
@@ -70,7 +69,7 @@ def list_files(
 	project_dir = project_dir.expanduser().resolve()
 
 	try:
-		project = load_project_config(project_dir)
+		load_project_config(project_dir)
 	except FileNotFoundError as exc:
 		raise typer.BadParameter(f"Project not found: {project_dir}") from exc
 
@@ -110,7 +109,7 @@ def show_labels(
 	project_dir = project_dir.expanduser().resolve()
 
 	try:
-		project = load_project_config(project_dir)
+		load_project_config(project_dir)
 	except FileNotFoundError as exc:
 		raise typer.BadParameter(f"Project not found: {project_dir}") from exc
 
@@ -140,7 +139,7 @@ def delete_files_by_label(
 	project_dir = project_dir.expanduser().resolve()
 
 	try:
-		project = load_project_config(project_dir)
+		load_project_config(project_dir)
 	except FileNotFoundError as exc:
 		raise typer.BadParameter(f"Project not found: {project_dir}") from exc
 

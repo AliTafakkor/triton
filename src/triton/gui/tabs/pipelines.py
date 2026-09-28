@@ -10,7 +10,6 @@ from triton.core.project import Pipeline, Project, load_file_labels, log_project
 from triton.core.pipeline_runtime import PIPELINE_ACTIONS, PIPELINE_DEFAULT_STEP, PIPELINE_STEP_ORDER
 from triton.core.ramp import RAMP_SHAPES
 from triton.gui.shared import (
-	_apply_pipeline_step,
 	_default_step_options,
 	_load_pipelines,
 	_new_pipeline_run_id,
