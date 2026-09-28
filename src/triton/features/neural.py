@@ -38,11 +38,13 @@ def load_model(key: str):
 	if key not in MODELS:
 		raise ValueError(f"Unknown model '{key}'. Choose from: {', '.join(MODELS)}")
 
-	from triton._torch_compat import patch_torch_compiler
+	try:
+		from triton._torch_compat import patch_torch_compiler
 
-	patch_torch_compiler()
-
-	from transformers import AutoFeatureExtractor, AutoModel
+		patch_torch_compiler()
+		from transformers import AutoFeatureExtractor, AutoModel
+	except ImportError as exc:
+		raise ImportError("Neural features need torch and transformers: pip install 'conch-triton[features]'") from exc
 
 	model_id = MODELS[key].model_id
 	extractor = AutoFeatureExtractor.from_pretrained(model_id)

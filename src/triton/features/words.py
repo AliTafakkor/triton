@@ -17,7 +17,10 @@ class Word:
 
 def load_whisper(model_size: str = "small"):
 	"""Load a Whisper model on CPU. Call once and reuse across files."""
-	import whisper
+	try:
+		import whisper
+	except ImportError as exc:
+		raise ImportError("Word onsets need openai-whisper: pip install 'conch-triton[features]'") from exc
 
 	return whisper.load_model(model_size, device="cpu")
 

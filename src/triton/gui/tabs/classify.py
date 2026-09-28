@@ -6,7 +6,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from triton.core.project import Project, load_file_labels, log_project_event, set_file_labels
+from triton.core.project import Project, get_file_labels, load_file_labels, log_project_event, set_file_labels
 
 
 @st.cache_resource(show_spinner="Loading AST classification model...")
@@ -38,9 +38,9 @@ def render_classify_tab(project: Project, project_files: list[Path]) -> None:
         top_k = int(st.number_input("Top labels", min_value=1, max_value=20, value=5, step=1))
 
     save_labels = st.checkbox(
-        "Save top label to project after classification",
+        "Add top label to project after classification",
         value=True,
-        help="Saves the highest-confidence label to the project label system so it can be used for filtering and batch operations.",
+        help="Adds the highest-confidence label to the file's existing labels (e.g. bab-f1 is kept) so it can be used for filtering and batch operations.",
     )
 
     run = st.button("Classify", type="primary", disabled=not selected_names)
@@ -69,7 +69,10 @@ def render_classify_tab(project: Project, project_files: list[Path]) -> None:
                 result = classify_file(file_path, extractor=extractor, model=model, top_k=top_k)
                 results.append((file_path, result))
                 if save_labels and result.labels:
-                    set_file_labels(project.path, file_path, [result.labels[0]])
+                    # Add, don't replace: existing labels (e.g. bab-f1 for Babble) must survive.
+                    existing = get_file_labels(project.path, file_path)
+                    if result.labels[0] not in existing:
+                        set_file_labels(project.path, file_path, [*existing, result.labels[0]])
             except Exception as exc:
                 errors.append(f"{file_path.name}: {exc}")
 
@@ -95,7 +98,7 @@ def render_classify_tab(project: Project, project_files: list[Path]) -> None:
                 ]
                 st.dataframe(rows, width="stretch", hide_index=True)
                 if save_labels:
-                    st.caption(f"Saved label: **{result.labels[0]}**")
+                    st.caption(f"Added label: **{result.labels[0]}**")
 
     for error in errors:
         st.error(error)
