@@ -5,8 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-import whisper
-
 
 @dataclass(frozen=True)
 class TranscriptSegment:
@@ -33,6 +31,11 @@ def transcribe_file(
 	vad_filter: bool = True,
 ) -> TranscriptResult:
 	"""Transcribe a single audio file using openai-whisper."""
+	try:
+		import whisper
+	except ImportError as exc:
+		raise ImportError("Transcription needs openai-whisper: pip install 'conch-triton[transcribe]'") from exc
+
 	import sys
 	if sys.platform == "win32":
 		import torch

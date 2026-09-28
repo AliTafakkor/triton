@@ -24,11 +24,13 @@ class ClassificationResult:
 
 def load_model():
     """Load the AST feature extractor and model. Call once and cache the result."""
-    from triton._torch_compat import patch_torch_compiler
+    try:
+        from triton._torch_compat import patch_torch_compiler
 
-    patch_torch_compiler()
-
-    from transformers import AutoFeatureExtractor, AutoModelForAudioClassification
+        patch_torch_compiler()
+        from transformers import AutoFeatureExtractor, AutoModelForAudioClassification
+    except ImportError as exc:
+        raise ImportError("Classification needs torch and transformers: pip install 'conch-triton[classify]'") from exc
     extractor = AutoFeatureExtractor.from_pretrained(MODEL_ID)
     model = AutoModelForAudioClassification.from_pretrained(MODEL_ID)
     model.eval()

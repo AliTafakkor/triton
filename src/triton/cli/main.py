@@ -32,6 +32,21 @@ app.add_typer(examples_app, name="examples")
 
 
 @app.command()
+def gui(
+	port: int | None = typer.Option(None, help="Port to serve on (default: Streamlit's, 8501)"),
+):
+	"""Launch the Triton web interface in your browser."""
+	import subprocess
+	import sys
+
+	app_path = Path(__file__).resolve().parents[1] / "app.py"
+	command = [sys.executable, "-m", "streamlit", "run", str(app_path)]
+	if port is not None:
+		command += ["--server.port", str(port)]
+	raise typer.Exit(subprocess.call(command))
+
+
+@app.command()
 def mix(
 	speech_path: Path = typer.Argument(..., help="Speech file or directory"),
 	noise_path: Path = typer.Argument(..., help="Noise file"),
