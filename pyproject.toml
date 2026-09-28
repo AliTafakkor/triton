@@ -46,8 +46,13 @@ classify = [
     "torch",
     "transformers>=4.40,<4.52",
 ]
+features = [
+    "torch",
+    "transformers>=4.40,<4.52",
+    "openai-whisper",
+]
 all = [
-    "conch-triton[transcribe,classify]",
+    "conch-triton[transcribe,classify,features]",
 ]
 
 [project.scripts]
