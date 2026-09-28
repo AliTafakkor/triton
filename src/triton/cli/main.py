@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Tuple
 
-import numpy as np
 import typer
 
 from triton.core.mixer import mix_at_snr

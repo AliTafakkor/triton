@@ -144,7 +144,7 @@ def _render_rss_ingest_tab(project: Project) -> None:
 	if fetch_only:
 		return
 
-	with st.status("Downloading episodes...", expanded=True) as download_status:
+	with st.status("Downloading episodes...", expanded=True):
 		try:
 			downloaded_paths = source.download(selected_entries, raw_dir, overwrite=overwrite)
 		except Exception as exc:

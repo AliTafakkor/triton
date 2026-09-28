@@ -765,14 +765,16 @@ def set_file_labels(project_dir: Path, file_path: Path, labels: list[str]) -> No
 
 	Args:
 		project_dir: Path to the project directory.
-		file_path: Path to the audio file (raw or normalized).
+		file_path: Path to the audio file (raw, normalized, or top-level derived).
 		labels: Labels to assign. Empty list removes all labels.
 	"""
-	norm_dir = project_normalized_dir(project_dir)
-	raw_dir = project_raw_dir(project_dir)
-	resolved_parent = file_path.resolve().parent
-	if resolved_parent not in (norm_dir.resolve(), raw_dir.resolve()):
-		raise ValueError(f"File must be in project raw or normalized directory: {file_path}")
+	allowed_dirs = {
+		project_normalized_dir(project_dir).resolve(),
+		project_raw_dir(project_dir).resolve(),
+		project_derived_dir(project_dir).resolve(),
+	}
+	if file_path.resolve().parent not in allowed_dirs:
+		raise ValueError(f"File must be in project raw, normalized, or derived directory: {file_path}")
 
 	all_labels = load_file_labels(project_dir)
 	stem = file_path.stem

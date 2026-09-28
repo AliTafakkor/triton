@@ -55,7 +55,7 @@ def render_classify_tab(project: Project, project_files: list[Path]) -> None:
         extractor, model = _load_model()
     except Exception as exc:
         st.error(f"Could not load classification model: {exc}")
-        st.caption("Make sure `transformers` is installed: add it to pixi.toml pypi-dependencies.")
+        st.caption("Make sure `transformers` is installed: run `pip install conch-triton[classify]` (or use the default pixi environment).")
         return
 
     from triton.classify.ast import classify_file
