@@ -13,3 +13,6 @@ dist/
 
 # macOS
 .DS_Store
+
+# example audio downloaded by `triton examples download --dest examples/audio`
+examples/audio/
