@@ -128,7 +128,6 @@ def _run_extraction(
 		progress.progress(index / len(paths), text=f"Processing {path.name} ({index + 1}/{len(paths)})")
 		try:
 			audio, sr = librosa.load(str(path), sr=None, mono=True)
-			duration = audio.size / sr
 
 			if envelope:
 				times, values = envelope_feature(audio, sr, rate=envelope["rate"], cutoff=envelope["cutoff"])
@@ -141,7 +140,7 @@ def _run_extraction(
 				model = _load_whisper(words["model_size"])
 				found = transcribe_words(path, model=model, language=words["language"])
 				onsets = np.array([w.start for w in found], dtype=np.float32)
-				times, train = onset_train(onsets, duration, words["rate"])
+				times, train = onset_train(onsets, audio.size, sr, words["rate"])
 				saved.append(save_feature(
 					project.path, path, "word_onsets",
 					{

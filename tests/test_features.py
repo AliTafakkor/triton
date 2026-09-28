@@ -34,11 +34,22 @@ def test_envelope_feature_rejects_rate_above_sample_rate() -> None:
 
 
 def test_onset_train_places_impulses_on_grid() -> None:
-	times, train = onset_train(np.array([0.0, 0.5, 0.504, 5.0]), duration=1.0, rate=100)
+	times, train = onset_train(np.array([0.0, 0.5, 0.504, 5.0]), n_samples=16000, sr=16000, rate=100)
 
 	assert train.shape == times.shape == (100,)
 	# 0.5 and 0.504 round to the same sample; 5.0 is past the end and dropped.
 	assert np.flatnonzero(train).tolist() == [0, 50]
+
+
+@pytest.mark.parametrize("n_samples", [45840, 48000, 16001, 44099])
+def test_onset_train_matches_envelope_length(n_samples: int) -> None:
+	# 45840 samples at 16 kHz is 286.5 frames at 100 Hz: the case that used to disagree.
+	audio = np.random.default_rng(0).standard_normal(n_samples).astype(np.float32)
+	env_times, _ = envelope_feature(audio, 16000, rate=100)
+	train_times, _ = onset_train(np.array([0.1]), n_samples, 16000, 100)
+
+	assert train_times.shape == env_times.shape
+	np.testing.assert_allclose(train_times, env_times)
 
 
 def _fake_speech_model(num_layers: int = 3, hidden: int = 4):
