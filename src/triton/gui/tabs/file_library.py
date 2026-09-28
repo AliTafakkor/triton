@@ -137,7 +137,7 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 				)
 			with delete_col3:
 				delete_disabled = label_to_delete == "(Select label)" or not confirm_delete
-				if st.button("Delete Label Files", type="secondary", use_container_width=True, disabled=delete_disabled):
+				if st.button("Delete Label Files", type="secondary", width="stretch", disabled=delete_disabled):
 					deleted_files = _delete_project_files_by_label(project.path, label_to_delete)
 					deleted_set = {str(path) for path in deleted_files}
 					for deleted in deleted_files:
@@ -224,7 +224,7 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 					)
 
 				with row_cols[5]:
-					if st.button("📊", key=f"spec_{global_index}", help="View spectrogram", use_container_width=True):
+					if st.button("📊", key=f"spec_{global_index}", help="View spectrogram", width="stretch"):
 						if not spec_path.exists():
 							try:
 								_generate_file_spectrogram(file_path, project)
@@ -238,12 +238,12 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 							st.rerun()
 
 				with row_cols[6]:
-					if st.button("✏️", key=f"rename_{global_index}", help="Rename file", use_container_width=True):
+					if st.button("✏️", key=f"rename_{global_index}", help="Rename file", width="stretch"):
 						st.session_state["rename_mode"] = global_index
 						st.rerun()
 
 				with row_cols[7]:
-					if st.button("🗑️", key=f"delete_{global_index}", help="Delete file", use_container_width=True):
+					if st.button("🗑️", key=f"delete_{global_index}", help="Delete file", width="stretch"):
 						_delete_project_file(file_path)
 						if st.session_state.get("selected_spectrogram_file") == str(file_path):
 							st.session_state.pop("selected_spectrogram_file", None)
@@ -253,7 +253,7 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 			if total_pages > 1:
 				pagination_cols = st.columns([1, 1, 1, 1])
 				with pagination_cols[0]:
-					if st.button("⬅ Previous", key="prev_page", use_container_width=True, disabled=current_page == 0):
+					if st.button("⬅ Previous", key="prev_page", width="stretch", disabled=current_page == 0):
 						st.session_state["file_list_page"] = max(0, current_page - 1)
 						st.rerun()
 
@@ -261,7 +261,7 @@ def _render_file_library(project: Project, project_files: list[Path]) -> None:
 					st.caption(f"Page {current_page + 1} of {total_pages}")
 
 				with pagination_cols[2]:
-					if st.button("Next ➡", key="next_page", use_container_width=True, disabled=current_page >= total_pages - 1):
+					if st.button("Next ➡", key="next_page", width="stretch", disabled=current_page >= total_pages - 1):
 						st.session_state["file_list_page"] = min(total_pages - 1, current_page + 1)
 						st.rerun()
 
