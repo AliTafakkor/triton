@@ -91,6 +91,68 @@ def mix_at_snr(speech: np.ndarray, noise: np.ndarray, snr_db: float, target_rms:
 	return mixed
 
 
+def mix_at_snr_with_lead(
+	speech: np.ndarray,
+	noise: np.ndarray,
+	snr_db: float,
+	*,
+	lead_samples: int = 0,
+	lag_samples: int = 0,
+	target_rms: float | None = None,
+) -> np.ndarray:
+	"""Mix speech into noise that starts before it and ends after it.
+
+	The output is ``lead_samples + len(speech) + lag_samples`` long and the speech starts at
+	``lead_samples``. Noise fills the whole output. SNR and level are defined over the speech
+	span only, with the same rules as :func:`mix_at_snr`: over the span, speech and noise are
+	scaled to the same RMS, the SNR is split symmetrically, and the mixture over the span is
+	brought to ``target_rms`` (the speech RMS when None). The lead and lag carry the noise at the
+	level it has under the speech. With no lead and no lag the result equals :func:`mix_at_snr`.
+
+	A noise lead lets listeners hear the masker first, so the voice that starts later is the
+	target, as in many speech-in-speech studies.
+
+	Args:
+		speech: Speech waveform, shape ``(samples,)`` or ``(channels, samples)``.
+		noise: Noise waveform. Tiled or cropped to the output length.
+		snr_db: Target signal-to-noise ratio in dB over the speech span.
+		lead_samples: Samples of noise before the speech.
+		lag_samples: Samples of noise after the speech.
+		target_rms: RMS of the mixture over the speech span. If None, the speech RMS.
+
+	Returns:
+		Mixed waveform of length ``lead_samples + len(speech) + lag_samples``.
+	"""
+	lead_samples = int(lead_samples)
+	lag_samples = int(lag_samples)
+	if lead_samples < 0 or lag_samples < 0:
+		raise ValueError("Lead and lag must not be negative.")
+	if lead_samples == 0 and lag_samples == 0:
+		return mix_at_snr(speech, noise, snr_db, target_rms=target_rms)
+
+	speech = np.asarray(speech, dtype=np.float32)
+	if speech.shape[-1] == 0:
+		raise ValueError("Speech must have non-zero length.")
+	n_speech = speech.shape[-1]
+	noise = _match_length(np.asarray(noise, dtype=np.float32), lead_samples + n_speech + lag_samples)
+	span = slice(lead_samples, lead_samples + n_speech)
+
+	speech_rms = float(rms(speech))
+	noise_rms = float(rms(noise[..., span]))
+	if speech_rms <= 0:
+		raise ValueError("Speech RMS is zero; cannot mix.")
+	if noise_rms <= 0:
+		raise ValueError("Noise RMS under the speech is zero; cannot mix.")
+	if target_rms is None:
+		target_rms = speech_rms
+
+	half_snr_linear = 10 ** (snr_db / 2 / 20)
+	mixed = noise * (target_rms / noise_rms) / half_snr_linear
+	mixed[..., span] += speech * (target_rms / speech_rms) * half_snr_linear
+	mixed *= target_rms / float(rms(mixed[..., span]))
+	return mixed.astype(np.float32)
+
+
 def mix_at_snr_segmented(
 	speech: np.ndarray,
 	noise: np.ndarray,

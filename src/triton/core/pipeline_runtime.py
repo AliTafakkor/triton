@@ -29,6 +29,7 @@ PIPELINE_ACTIONS: dict[str, str] = {
 	"add_noise": "Add noise at target SNR",
 	"time_compress": "Time compression (Praat/Parselmouth)",
 	"ramp": "Fade in / Fade out (ramp)",
+	"pad_silence": "Pad with silence (before / after)",
 }
 
 PIPELINE_STEP_ORDER = list(PIPELINE_ACTIONS.keys())
@@ -57,11 +58,15 @@ def default_step_options(step: str, project_sr: int) -> dict[str, object]:
 			"noise_project_file": "",
 			"noise_file": "",
 			"seed": None,
+			"lead_s": 0.0,
+			"lag_s": 0.0,
 		}
 	if step == "time_compress":
 		return {"factor": 1.0}
 	if step == "ramp":
 		return {"ramp_start": 0.05, "ramp_end": 0.05, "shape": "cosine"}
+	if step == "pad_silence":
+		return {"lead_s": 0.0, "lag_s": 0.0}
 	return {}
 
 
@@ -215,6 +220,8 @@ def apply_pipeline_step(
 				noise_file = (project.path / noise_file).resolve()
 		seed_raw = options.get("seed")
 		seed = int(seed_raw) if seed_raw is not None and str(seed_raw).strip() != "" else None
+		lead_s = float(options.get("lead_s", 0.0) or 0.0)
+		lag_s = float(options.get("lag_s", 0.0) or 0.0)
 
 		if audio.ndim == 1:
 			return add_noise(
@@ -224,6 +231,8 @@ def apply_pipeline_step(
 				noise_file=noise_file,
 				sample_rate=sr,
 				seed=seed,
+				lead_s=lead_s,
+				lag_s=lag_s,
 			), sr
 
 		channel_major = np.asarray(audio, dtype=np.float32).T
@@ -234,6 +243,8 @@ def apply_pipeline_step(
 			noise_file=noise_file,
 			sample_rate=sr,
 			seed=seed,
+			lead_s=lead_s,
+			lag_s=lag_s,
 		)
 		return np.asarray(mixed, dtype=np.float32).T, sr
 
@@ -249,6 +260,16 @@ def apply_pipeline_step(
 		ramp_end = float(options.get("ramp_end", 0.05))
 		shape = str(options.get("shape", "cosine"))
 		return apply_ramp(audio, sr, ramp_start=ramp_start, ramp_end=ramp_end, shape=shape), sr
+
+	if step == "pad_silence":
+		lead_s = float(options.get("lead_s", 0.0) or 0.0)
+		lag_s = float(options.get("lag_s", 0.0) or 0.0)
+		if lead_s < 0 or lag_s < 0:
+			raise ValueError("Padding must not be negative.")
+		lead = int(round(lead_s * sr))
+		lag = int(round(lag_s * sr))
+		widths = ((lead, lag),) if audio.ndim == 1 else ((lead, lag), (0, 0))
+		return np.pad(np.asarray(audio, dtype=np.float32), widths), sr
 
 	raise ValueError(f"Unsupported pipeline step: {step}")
 

@@ -12,7 +12,7 @@ import re
 import numpy as np
 
 from triton.core.io import load_audio
-from triton.core.mixer import mix_at_snr
+from triton.core.mixer import mix_at_snr, mix_at_snr_with_lead
 from triton.degrade.speech_noise import speech_shaped_noise
 
 
@@ -40,9 +40,13 @@ def _resolve_noise(
 	noise_file: Path | None,
 	sample_rate: int | None,
 	seed: int | None,
+	length: int | None = None,
 ) -> np.ndarray:
-	"""Resolve noise from an array, a file, or generated noise type."""
-	target_length = int(target.shape[-1])
+	"""Resolve noise from an array, a file, or generated noise type.
+
+	``length`` is the number of noise samples wanted (default: the target's length).
+	"""
+	target_length = int(length) if length is not None else int(target.shape[-1])
 	if target_length <= 0:
 		raise ValueError("Target must have non-zero length.")
 
@@ -86,6 +90,8 @@ def add_noise(
 	noise_file: Path | None = None,
 	sample_rate: int | None = None,
 	seed: int | None = None,
+	lead_s: float = 0.0,
+	lag_s: float = 0.0,
 ) -> np.ndarray:
 	"""Mix target audio with noise at the requested SNR in dB.
 
@@ -97,11 +103,20 @@ def add_noise(
 		noise_file: Optional path to an existing noise file.
 		sample_rate: Sample rate used for loading/generating noise when needed.
 		seed: Optional RNG seed used for random noise cropping.
+		lead_s: Seconds of noise before the target (needs ``sample_rate``).
+		lag_s: Seconds of noise after the target (needs ``sample_rate``).
 
 	Returns:
-		Normalized mixed waveform.
+		Normalized mixed waveform. With a lead or lag it is longer than the target, and the
+		SNR and level are measured over the target span (see ``mix_at_snr_with_lead``).
 	"""
 	target_audio = np.asarray(target, dtype=np.float32)
+	if lead_s < 0 or lag_s < 0:
+		raise ValueError("lead_s and lag_s must not be negative.")
+	if (lead_s > 0 or lag_s > 0) and (sample_rate is None or sample_rate <= 0):
+		raise ValueError("sample_rate must be provided and positive to add a noise lead or lag.")
+	lead = int(round(lead_s * sample_rate)) if lead_s > 0 else 0
+	lag = int(round(lag_s * sample_rate)) if lag_s > 0 else 0
 	resolved_noise = _resolve_noise(
 		target=target_audio,
 		noise=noise,
@@ -109,5 +124,8 @@ def add_noise(
 		noise_file=noise_file,
 		sample_rate=sample_rate,
 		seed=seed,
+		length=int(target_audio.shape[-1]) + lead + lag,
 	)
-	return mix_at_snr(target_audio, resolved_noise, snr_db)
+	if lead == 0 and lag == 0:
+		return mix_at_snr(target_audio, resolved_noise, snr_db)
+	return mix_at_snr_with_lead(target_audio, resolved_noise, snr_db, lead_samples=lead, lag_samples=lag)
