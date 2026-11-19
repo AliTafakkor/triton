@@ -46,6 +46,10 @@ def _delete_pipeline_step(step_index: int) -> None:
 		"pipeline_step_noise_project_file_",
 		"pipeline_step_noise_file_",
 		"pipeline_step_noise_seed_",
+		"pipeline_step_noise_lead_",
+		"pipeline_step_noise_lag_",
+		"pipeline_step_pad_lead_",
+		"pipeline_step_pad_lag_",
 		"pipeline_step_compress_factor_",
 		"pipeline_step_ramp_start_",
 		"pipeline_step_ramp_end_",
@@ -104,6 +108,10 @@ def _open_pipeline_editor(mode: str, project: Project, pipeline: Pipeline | None
 		st.session_state[f"pipeline_step_noise_file_{index}"] = str(options.get("noise_file", ""))
 		seed_value = options.get("seed")
 		st.session_state[f"pipeline_step_noise_seed_{index}"] = int(seed_value) if seed_value is not None and str(seed_value).strip() != "" else -1
+		st.session_state[f"pipeline_step_noise_lead_{index}"] = float(options.get("lead_s", 0.0) or 0.0) if action_key == "add_noise" else 0.0
+		st.session_state[f"pipeline_step_noise_lag_{index}"] = float(options.get("lag_s", 0.0) or 0.0) if action_key == "add_noise" else 0.0
+		st.session_state[f"pipeline_step_pad_lead_{index}"] = float(options.get("lead_s", 0.0) or 0.0) if action_key == "pad_silence" else 0.0
+		st.session_state[f"pipeline_step_pad_lag_{index}"] = float(options.get("lag_s", 0.0) or 0.0) if action_key == "pad_silence" else 0.0
 		st.session_state[f"pipeline_step_compress_factor_{index}"] = float(options.get("factor", 1.0))
 		st.session_state[f"pipeline_step_ramp_start_{index}"] = float(options.get("ramp_start", 0.05))
 		st.session_state[f"pipeline_step_ramp_end_{index}"] = float(options.get("ramp_end", 0.05))
@@ -135,6 +143,10 @@ def _delete_pipeline_step(step_index: int) -> None:
 		"pipeline_step_noise_project_file_",
 		"pipeline_step_noise_file_",
 		"pipeline_step_noise_seed_",
+		"pipeline_step_noise_lead_",
+		"pipeline_step_noise_lag_",
+		"pipeline_step_pad_lead_",
+		"pipeline_step_pad_lag_",
 		"pipeline_step_compress_factor_",
 		"pipeline_step_ramp_start_",
 		"pipeline_step_ramp_end_",
@@ -222,10 +234,33 @@ def _render_step_options_editor(step: str, index: int, project: Project, project
 			step=1,
 			key=f"pipeline_step_noise_seed_{index}",
 		)
+		lead_col, lag_col = st.columns(2)
+		with lead_col:
+			lead_s = st.number_input(
+				"Noise before target (s)",
+				min_value=0.0,
+				max_value=10.0,
+				value=float(st.session_state.get(f"pipeline_step_noise_lead_{index}", 0.0)),
+				step=0.1,
+				key=f"pipeline_step_noise_lead_{index}",
+				help="The noise starts this long before the target. SNR and level are measured over the target only.",
+			)
+		with lag_col:
+			lag_s = st.number_input(
+				"Noise after target (s)",
+				min_value=0.0,
+				max_value=10.0,
+				value=float(st.session_state.get(f"pipeline_step_noise_lag_{index}", 0.0)),
+				step=0.1,
+				key=f"pipeline_step_noise_lag_{index}",
+				help="The noise continues this long after the target.",
+			)
 		options: dict[str, object] = {
 			"noise_type": str(noise_type),
 			"snr_db": float(snr_db),
 			"noise_project_file": str(noise_project_file).strip(),
+			"lead_s": float(lead_s),
+			"lag_s": float(lag_s),
 		}
 		if int(seed_value) >= 0:
 			options["seed"] = int(seed_value)
@@ -240,6 +275,14 @@ def _render_step_options_editor(step: str, index: int, project: Project, project
 		ramp_start = st.slider("Fade-in duration (s)", min_value=0.0, max_value=5.0, value=float(st.session_state.get(f"pipeline_step_ramp_start_{index}", 0.05)), step=0.01, key=f"pipeline_step_ramp_start_{index}")
 		ramp_end = st.slider("Fade-out duration (s)", min_value=0.0, max_value=5.0, value=float(st.session_state.get(f"pipeline_step_ramp_end_{index}", 0.05)), step=0.01, key=f"pipeline_step_ramp_end_{index}")
 		return {"ramp_start": float(ramp_start), "ramp_end": float(ramp_end), "shape": str(shape)}
+
+	if step == "pad_silence":
+		lead_col, lag_col = st.columns(2)
+		with lead_col:
+			lead_s = st.number_input("Silence before (s)", min_value=0.0, max_value=10.0, value=float(st.session_state.get(f"pipeline_step_pad_lead_{index}", 0.0)), step=0.1, key=f"pipeline_step_pad_lead_{index}", help="Give clean files the same timeline as files with a noise lead.")
+		with lag_col:
+			lag_s = st.number_input("Silence after (s)", min_value=0.0, max_value=10.0, value=float(st.session_state.get(f"pipeline_step_pad_lag_{index}", 0.0)), step=0.1, key=f"pipeline_step_pad_lag_{index}")
+		return {"lead_s": float(lead_s), "lag_s": float(lag_s)}
 
 	st.caption("No options for this step.")
 	return {}

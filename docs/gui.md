@@ -226,12 +226,18 @@ The pipeline editor includes an `add_noise` step with these options:
 - `snr_db`: target SNR in dB
 - `noise_project_file`: select a noise source from existing project audio files
 - `seed`: optional random seed
+- `lead_s`, `lag_s`: seconds of noise before and after the speech (default 0)
 
 Notes:
 
 - `babble` in this step is file-backed only and is not generated.
 - With `noise_type=auto`, files named like `bab-t8.wav` are auto-recognized as multitalker babble sources.
 - If the provided noise is longer than the speech signal, Triton randomly selects a same-length segment before mixing.
+- With a lead or lag the output is longer than the speech, and the speech starts after `lead_s`. The SNR and the output level are measured over the speech only, so they match a mix without a lead. The noise before and after the speech has the same level as under it. A lead lets listeners hear the masker first, so the voice that starts later is the target.
+
+### Pad Silence Step
+
+`pad_silence` adds `lead_s` seconds of silence before the audio and `lag_s` seconds after it, without changing the audio itself. Use it as the last step of clean or vocoded pipelines when other conditions have a noise lead, so every file has the same timeline. Put it after any RMS normalization, or the silence lowers the level of the speech.
 
 ### Sidecar Provenance
 
