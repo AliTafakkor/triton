@@ -19,6 +19,9 @@
 	--card-subtle-text: #cbe2e5;
 	--metric-start: rgba(9, 40, 55, 0.95);
 	--metric-end: rgba(9, 40, 55, 0.7);
+	/* Same values as backgroundColor / secondaryBackgroundColor in .streamlit/config.toml */
+	--field-bg: #0e3040;
+	--overlay-bg: #06141f;
 }
 
 html[data-theme="light"], body[data-theme="light"], [data-theme="light"] {
@@ -81,6 +84,40 @@ div[data-testid="stMetric"] {
 .stTextInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea {
 	background: rgba(255, 255, 255, 0.06) !important;
 	border-radius: 14px !important;
+}
+
+/*
+ * Select boxes, their dropdown menus and help tooltips draw their own backgrounds
+ * from the Streamlit theme. When the dark theme in .streamlit/config.toml is not
+ * loaded (Triton started from outside the repo), those backgrounds are white while
+ * the rule above still forces light text, so values and options vanish.
+ * Pin them to the dark theme's colours so the text stays readable either way.
+ */
+div[data-baseweb="select"] > div {
+	background-color: var(--field-bg) !important;
+}
+
+[data-testid="stSidebar"] div[data-baseweb="select"] > div {
+	background-color: var(--overlay-bg) !important;
+}
+
+div[data-baseweb="select"] input {
+	color: var(--ink) !important;
+	caret-color: var(--ink) !important;
+}
+
+div[data-baseweb="select"] svg {
+	color: var(--ink) !important;
+}
+
+div[data-baseweb="popover"],
+div[data-baseweb="popover"] > div,
+div[data-baseweb="popover"] ul {
+	background-color: var(--overlay-bg) !important;
+}
+
+div[data-baseweb="tooltip"] > div {
+	background-color: var(--field-bg) !important;
 }
 
 .stFileUploader, .stAudio, .stForm {
